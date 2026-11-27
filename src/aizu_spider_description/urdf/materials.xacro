@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="materials">
+
+  <material name="RED">
+    <color rgba="0.75 0 0 1"/>
+  </material>
+
+  <material name="DARK_GRAY">
+    <color rgba="0.25 0.25 0.25 1"/>
+  </material>
+
+  <material name="WHITE">
+    <color rgba="1 1 1 1"/>
+  </material>
+
+  <material name="LIGHT_YELLOW">
+    <color rgba="1 1 0.75 1"/>
+  </material>
+
+  <material name="MAIN_APPEARANCE">
+    <color rgba="0.8 0.1 0.1 1"/>
+  </material>
+
+  <material name="FINGER_APPEARANCE">
+    <color rgba="0.66 0.70 0.71 1"/>
+  </material>
+
+  <material name="RING_APPEARANCE">
+    <color rgba="0.66 0.70 0.71 1"/>
+  </material>
+
+</robot>
+

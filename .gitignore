@@ -1,0 +1,21 @@
+# ROS 2 build/install/log folders
+build/
+install/
+log/
+
+# Official sources downloaded by setup_workspace.sh (not part of this repository)
+src/choreonoid/
+src/choreonoid_ros/
+src/choreonoid_joy2/
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS generated files
+.DS_Store

@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>aizu_spider_description</name>
+  <version>0.0.0</version>
+  <description>Package for HobbyDrone simulation and mapping with multi-camera PCD nodes</description>
+  <maintainer email="adithyapothula123@gmail.com">adithya</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- Build tool -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- ROS dependencies -->
+  <depend>rclcpp</depend>
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_sensor_msgs</depend>
+
+  <!-- Python dependencies -->
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-open3d</exec_depend>
+
+  <!-- Test dependencies -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <!-- Node parameters documentation -->
+  <export>
+    <build_type>ament_cmake</build_type>
+    <ros2_node_parameters>
+      <node name="multi_camera_pcd_saver">
+        <param name="voxel_size" type="double" default="0.02"/>
+      </node>
+      <node name="multi_camera_pcd_accumulator">
+        <param name="voxel_size" type="double" default="0.02"/>
+      </node>
+    </ros2_node_parameters>
+  </export>
+</package>

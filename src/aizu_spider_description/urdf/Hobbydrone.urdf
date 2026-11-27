@@ -1,0 +1,243 @@
+<?xml version="1.0"?>
+<robot name="HobbyDrone">
+
+  <!-- ======================= Materials ======================= -->
+  <material name="grey">
+    <color rgba="0.5 0.5 0.5 1.0"/>
+  </material>
+  <material name="blue_cam">
+    <color rgba="0.2 0.2 0.8 0.5"/>
+  </material>
+  <material name="red_cam">
+    <color rgba="0.8 0.2 0.2 0.5"/>
+  </material>
+  <material name="green_cam">
+    <color rgba="0.2 0.8 0.2 0.5"/>
+  </material>
+  <material name="orange_light">
+    <color rgba="1.0 0.5 0.0 1.0"/>
+  </material>
+  <material name="cyan_light">
+    <color rgba="0.0 1.0 1.0 1.0"/>
+  </material>
+  <material name="green_rotor">
+    <color rgba="0 1 0 1.0"/>
+  </material>
+  <material name="red_rotor">
+    <color rgba="1 0 0 1.0"/>
+  </material>
+
+  <!-- ======================= Base Link ======================= -->
+  <link name="CHASSIS">
+    <visual>
+      <geometry>
+        <box size="0.15 0.15 0.07"/>
+      </geometry>
+      <material name="grey"/>
+    </visual>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.00228333" ixy="0" ixz="0" iyy="0.00228333" iyz="0" izz="0.00375"/>
+    </inertial>
+  </link>
+
+  <!-- ======================= Cameras ======================= -->
+
+  <!-- Front Camera -->
+  <link name="FrontCamera">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.02"/>
+      </geometry>
+      <material name="blue_cam"/>
+    </visual>
+  </link>
+  <joint name="FrontCamera_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="FrontCamera"/>
+    <origin xyz="0.08 0 0" rpy="-1.5708 0 -1.5708"/>
+  </joint>
+
+  <!-- Back Camera -->
+  <link name="BackCamera">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.02"/>
+      </geometry>
+      <material name="blue_cam"/>
+    </visual>
+  </link>
+  <joint name="BackCamera_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="BackCamera"/>
+    <origin xyz="-0.08 0 0" rpy="-1.5708 0 1.5708"/>
+  </joint>
+
+  <!-- Top Camera -->
+  <link name="TopCamera">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.02"/>
+      </geometry>
+      <material name="red_cam"/>
+    </visual>
+  </link>
+  <joint name="TopCamera_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="TopCamera"/>
+    <origin xyz="0 0 0.035" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Bottom Camera -->
+  <link name="BottomCamera">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.02"/>
+      </geometry>
+      <material name="green_cam"/>
+    </visual>
+  </link>
+  <joint name="BottomCamera_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="BottomCamera"/>
+    <origin xyz="0 0 -0.035" rpy="3.1416 0 0"/>
+  </joint>
+
+  <!-- ======================= Lights ======================= -->
+
+  <!-- Front Light -->
+  <link name="FrontLight">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -1.5708 0"/>
+      <geometry>
+        <cylinder radius="0.022" length="0.035"/>
+      </geometry>
+      <material name="orange_light"/>
+    </visual>
+  </link>
+  <joint name="FrontLight_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="FrontLight"/>
+    <origin xyz="0.06 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Back Light -->
+  <link name="BackLight">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -1.5708 0"/>
+      <geometry>
+        <cylinder radius="0.022" length="0.035"/>
+      </geometry>
+      <material name="orange_light"/>
+    </visual>
+  </link>
+  <joint name="BackLight_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="BackLight"/>
+    <origin xyz="-0.06 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Top Light -->
+  <link name="TopLight">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="0.028"/>
+      </geometry>
+      <material name="cyan_light"/>
+    </visual>
+  </link>
+  <joint name="TopLight_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="TopLight"/>
+    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Bottom Light -->
+  <link name="BottomLight">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="0.028"/>
+      </geometry>
+      <material name="cyan_light"/>
+    </visual>
+  </link>
+  <joint name="BottomLight_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="BottomLight"/>
+    <origin xyz="0 0 -0.03" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ======================= Rotors ======================= -->
+
+  <!-- Right-Front Rotor -->
+  <link name="ROTOR_RF">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.035" length="0.03"/>
+      </geometry>
+      <material name="green_rotor"/>
+    </visual>
+  </link>
+  <joint name="ROTOR_RF_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="ROTOR_RF"/>
+    <origin xyz="0.075 -0.075 0.035" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Left-Front Rotor -->
+  <link name="ROTOR_LF">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.035" length="0.03"/>
+      </geometry>
+      <material name="green_rotor"/>
+    </visual>
+  </link>
+  <joint name="ROTOR_LF_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="ROTOR_LF"/>
+    <origin xyz="0.075 0.075 0.035" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Left-Rear Rotor -->
+  <link name="ROTOR_LR">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.035" length="0.03"/>
+      </geometry>
+      <material name="red_rotor"/>
+    </visual>
+  </link>
+  <joint name="ROTOR_LR_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="ROTOR_LR"/>
+    <origin xyz="-0.075 0.075 0.035" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Right-Rear Rotor -->
+  <link name="ROTOR_RR">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.035" length="0.03"/>
+      </geometry>
+      <material name="red_rotor"/>
+    </visual>
+  </link>
+  <joint name="ROTOR_RR_joint" type="fixed">
+    <parent link="CHASSIS"/>
+    <child link="ROTOR_RR"/>
+    <origin xyz="-0.075 -0.075 0.035" rpy="0 0 0"/>
+  </joint>
+
+</robot>

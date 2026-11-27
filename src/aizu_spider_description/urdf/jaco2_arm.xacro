@@ -1,0 +1,411 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="jaco2_arm">
+  <!-- <xacro:include filename="$(find aizu_spider_description)/urdf/materials.xacro"/> -->
+  <xacro:macro name="jaco2_arm" params="prefix parent_link origin_xyz origin_rpy">
+
+    <link name="${prefix}BASE">
+      <inertial>
+        <mass value="0.46734"/>
+        <origin xyz="0 0 0.1255" rpy="0 0 0"/>
+        <inertia ixx="0.00095" ixy="0.0" ixz="0.0" iyy="0.00095" iyz="0.0" izz="0.000374"/>
+      </inertial>
+      
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/BASE_LOWER.stl"/></geometry>
+        <material name="RING_APPEARANCE"/>
+      </visual>
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/BASE_UPPER.stl"/></geometry>
+        <material name="MAIN_APPEARANCE"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0 0.1565" rpy="0 0 0"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/RING_BIG.stl"/></geometry>
+        <material name="RING_APPEARANCE"/>
+      </visual>
+
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/BASE_LOWER.stl"/></geometry>
+      </collision>
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/BASE_UPPER.stl"/></geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 0 0.1565" rpy="0 0 0"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/RING_BIG.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}BASE" type="fixed">
+      <parent link="${parent_link}"/>
+      <child link="${prefix}BASE"/>
+      <origin xyz="${origin_xyz}" rpy="${origin_rpy}"/>
+    </joint>
+
+    <link name="${prefix}SHOULDER">
+      <inertial>
+        <mass value="0.7477"/>
+        <origin xyz="0 -0.002 0.0605" rpy="0 0 0"/>
+        <inertia ixx="0.007932" ixy="0.0" ixz="0.0" iyy="0.007932" iyz="0.0" izz="0.000598"/>
+      </inertial>
+
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/SHOULDER.stl"/></geometry>
+        <material name="MAIN_APPEARANCE"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0.0015 0.119" rpy="1.5708 0 0"/> <geometry><mesh filename="package://aizu_spider_description/meshes/RING_BIG.stl"/></geometry>
+        <material name="RING_APPEARANCE"/>
+      </visual>
+
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/SHOULDER.stl"/></geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 0.0015 0.119" rpy="1.5708 0 0"/> <geometry><mesh filename="package://aizu_spider_description/meshes/RING_BIG.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}SHOULDER" type="revolute">
+      <parent link="${prefix}BASE"/>
+      <child link="${prefix}SHOULDER"/>
+      <origin xyz="0 0 0.1565" rpy="0 0 0"/>
+      <axis xyz="0 0 -1"/>
+      <limit lower="-3.14159" upper="3.14159" effort="40" velocity="42"/>
+    </joint>
+
+    <link name="${prefix}ARM">
+      <inertial>
+        <mass value="0.99"/>
+        <origin xyz="0 0.01 -0.02065" rpy="0 0 0"/>
+        <inertia ixx="0.010502" ixy="0.0" ixz="0.0" iyy="0.010502" iyz="0.0" izz="0.000792"/>
+      </inertial>
+      
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/ARM.stl"/></geometry>
+        <material name="MAIN_APPEARANCE"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0 -0.41" rpy="1.5708 0 0"/> <geometry><mesh filename="package://aizu_spider_description/meshes/RING_BIG.stl"/></geometry>
+        <material name="RING_APPEARANCE"/>
+      </visual>
+      
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/ARM.stl"/></geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 0 -0.41" rpy="1.5708 0 0"/> <geometry><mesh filename="package://aizu_spider_description/meshes/RING_BIG.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}ARM" type="revolute">
+      <parent link="${prefix}SHOULDER"/>
+      <child link="${prefix}ARM"/>
+      <origin xyz="0 0.0015 0.119" rpy="0 0 0"/>
+      <axis xyz="0 -1 0"/>
+      <limit lower="0.872" upper="5.410" effort="37" velocity="56.4"/>
+    </joint>
+
+    <link name="${prefix}FOREARM">
+      <inertial>
+        <mass value="0.6763"/>
+        <origin xyz="0 -0.0086 0.081" rpy="0 0 0"/>
+        <inertia ixx="0.00142" ixy="0.0" ixz="0.0" iyy="0.00142" iyz="0.0" izz="0.000304"/>
+      </inertial>
+      
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FOREARM.stl"/></geometry>
+        <material name="MAIN_APPEARANCE"/>
+      </visual>
+      <visual>
+        <origin xyz="0 -0.01125 0.207" rpy="0 0 0"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/RING_SMALL.stl"/></geometry>
+        <material name="RING_APPEARANCE"/>
+      </visual>
+
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FOREARM.stl"/></geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 -0.01125 0.207" rpy="0 0 0"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/RING_SMALL.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}FOREARM" type="revolute">
+      <parent link="${prefix}ARM"/>
+      <child link="${prefix}FOREARM"/>
+      <origin xyz="0 0 -0.41" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="0.331" upper="5.96" effort="30" velocity="42"/>
+    </joint>
+
+    <link name="${prefix}WRIST1">
+      <inertial>
+        <mass value="0.1785"/>
+        <origin xyz="0 0.037 0.0642" rpy="0 0 0"/>
+        <inertia ixx="0.0000773497" ixy="0.0" ixz="0.0" iyy="0.0000773497" iyz="0.0" izz="0.000143"/>
+      </inertial>
+      
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/WRIST.stl"/></geometry>
+        <material name="MAIN_APPEARANCE"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0.03725 0.06401" rpy="-1.0472 0 0"/> <geometry><mesh filename="package://aizu_spider_description/meshes/RING_SMALL.stl"/></geometry>
+        <material name="RING_APPEARANCE"/>
+      </visual>
+
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/WRIST.stl"/></geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 0.03725 0.06401" rpy="-1.0472 0 0"/> <geometry><mesh filename="package://aizu_spider_description/meshes/RING_SMALL.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}WRIST1" type="revolute">
+      <parent link="${prefix}FOREARM"/>
+      <child link="${prefix}WRIST1"/>
+      <origin xyz="0 -0.01125 0.207" rpy="0 0 0"/>
+      <axis xyz="0 0 -1"/>
+      <limit lower="-3.14159" upper="3.14159" effort="15" velocity="90"/>
+    </joint>
+
+    <link name="${prefix}WRIST2">
+      <inertial>
+        <mass value="0.1785"/>
+        <origin xyz="0 0.037 0.0642" rpy="0 0 0"/>
+        <inertia ixx="0.0000773497" ixy="0.0" ixz="0.0" iyy="0.0000773497" iyz="0.0" izz="0.000143"/>
+      </inertial>
+      
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 3.14159"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/WRIST.stl"/></geometry>
+        <material name="MAIN_APPEARANCE"/>
+      </visual>
+      <visual>
+        <origin xyz="0 -0.03725 0.06401" rpy="2.0944 0 3.14159"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/RING_SMALL.stl"/></geometry>
+        <material name="RING_APPEARANCE"/>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 3.14159"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/WRIST.stl"/></geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 -0.03725 0.06401" rpy="2.0944 0 3.14159"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/RING_SMALL.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}WRIST2" type="revolute">
+      <parent link="${prefix}WRIST1"/>
+      <child link="${prefix}WRIST2"/>
+      <origin xyz="0 0.03725 0.06401" rpy="-1.0472 0 0"/>
+      <axis xyz="0 0 -1"/>
+      <limit lower="-3.14159" upper="3.14159" effort="15" velocity="90"/>
+    </joint>
+
+    <link name="${prefix}HAND">
+      <inertial>
+        <mass value="0.727"/>
+        <origin xyz="0 0 0.06" rpy="0 0 0"/>
+        <inertia ixx="0.000345324" ixy="0.0" ixz="0.0" iyy="0.000345324" iyz="0.0" izz="0.000582"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/HAND.stl"/></geometry>
+        <material name="MAIN_APPEARANCE"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/PALM.stl"/></geometry>
+        <material name="FINGER_APPEARANCE"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER_BASE.stl"/></geometry>
+        <material name="FINGER_APPEARANCE"/>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/HAND.stl"/></geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/PALM.stl"/></geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER_BASE.stl"/></geometry>
+      </collision>     
+    </link>
+
+    <joint name="${prefix}HAND" type="revolute">
+      <parent link="${prefix}WRIST2"/>
+      <child link="${prefix}HAND"/>
+      <origin xyz="0 -0.03725 0.06401" rpy="-1.0472 0 3.142"/>
+      <axis xyz="0 0 -1"/>
+      <limit lower="-3.14159" upper="3.14159" effort="10" velocity="90"/>
+    </joint>
+
+    <link name="${prefix}CAMERA">
+      <inertial>
+        <mass value="0.02199"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <inertia ixx="0.00000304632" ixy="0.0" ixz="0.0" iyy="0.00000973032" iyz="0.0" izz="0.00000795005"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/MCM-4350FISH.stl"/></geometry>
+        <material name="MAIN_APPEARANCE"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/MCM-4350FISH.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}CAMERA" type="fixed">
+      <parent link="${prefix}HAND"/>
+      <child link="${prefix}CAMERA"/>
+      <origin xyz="0 0 0.1055" rpy="0 0 -1.5708"/>
+    </joint>
+    
+    <link name="${prefix}FINGER1">
+      <inertial>
+        <mass value="0.01"/>
+        <origin xyz="0 0 0.022" rpy="0 0 0"/>
+        <inertia ixx="0.000000789997" ixy="0.0" ixz="0.0" iyy="0.00000008" iyz="0.0" izz="0.000000789997"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER.stl"/></geometry>
+        <material name="FINGER_APPEARANCE"/>
+      </visual>
+      
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}FINGER1" type="revolute">
+      <parent link="${prefix}HAND"/>
+      <child link="${prefix}FINGER1"/>
+      <origin xyz="0 0.03116 0.11498" rpy="0 -0.9599 4.7124"/>
+      <axis xyz="0 1 0"/>
+      <limit effort="10" velocity="95" lower="0" upper="2.0071"/> 
+    </joint>
+
+    <link name="${prefix}FINGER1_TIP">
+      <inertial>
+        <mass value="0.01"/>
+        <origin xyz="0 0 0.022" rpy="0 0 0"/>
+        <inertia ixx="0.000000789997" ixy="0.0" ixz="0.0" iyy="0.00000008" iyz="0.0" izz="0.000000789997"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER_TIP.stl"/></geometry>
+        <material name="FINGER_APPEARANCE"/>
+      </visual>
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER_TIP.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}FINGER1_TIP" type="fixed">
+      <parent link="${prefix}FINGER1"/>
+      <child link="${prefix}FINGER1_TIP"/>
+      <origin xyz="-0.003 0 0.044" rpy="0 0 0"/>
+    </joint>
+
+    <link name="${prefix}FINGER2">
+      <inertial>
+        <mass value="0.01"/>
+        <origin xyz="0 0 0.022" rpy="0 0 0"/>
+        <inertia ixx="0.000000789997" ixy="0.0" ixz="0.0" iyy="0.00000008" iyz="0.0" izz="0.000000789997"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER.stl"/></geometry>
+        <material name="FINGER_APPEARANCE"/>
+      </visual>
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}FINGER2" type="revolute">
+      <parent link="${prefix}HAND"/>
+      <child link="${prefix}FINGER2"/>
+      <origin xyz="-0.02277 -0.02982 0.1139" rpy="0 -0.9599 1.3858"/>
+      <axis xyz="0 1 0"/>
+      <limit effort="10" velocity="95" lower="0" upper="2.0071"/> 
+    </joint>
+
+    <link name="${prefix}FINGER2_TIP">
+      <inertial>
+        <mass value="0.01"/>
+        <origin xyz="0 0 0.022" rpy="0 0 0"/>
+        <inertia ixx="0.000000789997" ixy="0.0" ixz="0.0" iyy="0.00000008" iyz="0.0" izz="0.000000789997"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER_TIP.stl"/></geometry>
+        <material name="FINGER_APPEARANCE"/>
+      </visual>
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER_TIP.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}FINGER2_TIP" type="fixed">
+      <parent link="${prefix}FINGER2"/>
+      <child link="${prefix}FINGER2_TIP"/>
+      <origin xyz="-0.003 0 0.044" rpy="0 0 0"/>
+    </joint>
+
+    <link name="${prefix}FINGER3">
+      <inertial>
+        <mass value="0.01"/>
+        <origin xyz="0 0 0.022" rpy="0 0 0"/>
+        <inertia ixx="0.000000789997" ixy="0.0" ixz="0.0" iyy="0.00000008" iyz="0.0" izz="0.000000789997"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER.stl"/></geometry>
+        <material name="FINGER_APPEARANCE"/>
+      </visual>
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}FINGER3" type="revolute">
+      <parent link="${prefix}HAND"/>
+      <child link="${prefix}FINGER3"/>
+      <origin xyz="0.02277 -0.02982 0.1139" rpy="0 -0.9599 1.7558"/>
+      <axis xyz="0 1 0"/>
+      <limit effort="10" velocity="95" lower="0" upper="2.0071"/> 
+    </joint>
+
+    <link name="${prefix}FINGER3_TIP">
+      <inertial>
+        <mass value="0.01"/>
+        <origin xyz="0 0 0.022" rpy="0 0 0"/>
+        <inertia ixx="0.000000789997" ixy="0.0" ixz="0.0" iyy="0.00000008" iyz="0.0" izz="0.000000789997"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER_TIP.stl"/></geometry>
+        <material name="FINGER_APPEARANCE"/>
+      </visual>
+      <collision>
+        <geometry><mesh filename="package://aizu_spider_description/meshes/FINGER_TIP.stl"/></geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}FINGER3_TIP" type="fixed">
+      <parent link="${prefix}FINGER3"/>
+      <child link="${prefix}FINGER3_TIP"/>
+      <origin xyz="-0.003 0 0.044" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+</robot>

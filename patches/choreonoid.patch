@@ -1,0 +1,909 @@
+diff --git a/sample/SimpleController/AizuSpiderController.cpp b/sample/SimpleController/AizuSpiderController.cpp
+index 50a3972a2ddfb8c0bf0975c38304037f253f50e3..a806341bd1ebb2859f680fe57324f1a27e77df95 100644
+--- a/sample/SimpleController/AizuSpiderController.cpp
++++ b/sample/SimpleController/AizuSpiderController.cpp
+@@ -1,360 +1,351 @@
+ #include <cnoid/SimpleController>
+ #include <cnoid/SharedJoystick>
+ #include <fmt/format.h>
++#include <rclcpp/rclcpp.hpp>
++#include <sensor_msgs/msg/joy.hpp>
++#include <std_msgs/msg/string.hpp>
++#include <thread>
++#include <mutex>
++#include <atomic>
++#include <vector>
++#include <string>
++#include <cmath>
+ 
+ using namespace std;
+ using namespace cnoid;
+ using fmt::format;
+ 
+ namespace {
+-
+-const double STICK_THRESH = 0.1;
+-
++    constexpr double STICK_THRESH = 0.1;
+ }
+ 
+ class AizuSpiderController : public SimpleController
+ {
+-    Body* body;
+-    double dt;
++public:
++    AizuSpiderController() = default;
++    virtual ~AizuSpiderController();
+ 
+-    int mainActuationMode;
++    virtual bool initialize(SimpleControllerIO* io) override;
++    virtual bool control() override;
+ 
++private:
++    // --- Choreonoid members ---
++    Body* body{nullptr};
++    double dt{0.0};
++    int mainActuationMode{Link::JointTorque};
+     vector<Link*> tracks;
+-    int trackActuationMode;
+-    double trackVelocityRatio;
+-    double kd_mainTrack;
+-    double kd_subTrack;
++    int trackActuationMode{Link::JointVelocity};
++    double trackVelocityRatio{1.0};
++    double kd_mainTrack{8.0};
++    double kd_subTrack{1.5};
+     vector<double> qprev_track;
+-
+-    enum { L_TRACK, R_TRACK, FL_SUB_TRACK, FR_SUB_TRACK, BL_SUB_TRACK, BR_SUB_TRACK, NUM_TRACKS };
+-
+-    struct JointInfo {
+-        Link* joint;
+-        double qref;
+-        double qold;
+-        double kp;
+-        double kd;
+-    };
+-    
++    enum TrackId { L_TRACK=0, R_TRACK, FL_SUB_TRACK, FR_SUB_TRACK, BL_SUB_TRACK, BR_SUB_TRACK, NUM_TRACKS };
++    struct JointInfo { Link* link{nullptr}; double qref{0.0}; double qold{0.0}; double kp{0.0}; double kd{0.0}; };
+     vector<JointInfo> jointInfos;
+-
+-    struct JointSpec {
+-        string name;
+-        double kp_torque;
+-        double kd_torque;
+-        double kp_velocity;
+-    };
+-
+-    enum { FR_FLIPPER, FL_FLIPPER, BR_FLIPPER, BL_FLIPPER, NUM_FLIPPERS };
+-
++    struct JointSpec { string name; double kp_torque; double kd_torque; double kp_velocity; };
+     SharedJoystickPtr joystick;
+-    int targetMode;
+-
+-public:
+-    virtual bool initialize(SimpleControllerIO* io) override;
++    int targetMode{0};
++
++    // --- ROS2 related ---
++    rclcpp::Node::SharedPtr node;
++    rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub;
++    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr controller_sub_;
++    rclcpp::executors::SingleThreadedExecutor::SharedPtr executor;
++    thread ros_thread;
++    mutable mutex joy_mutex;
++    sensor_msgs::msg::Joy::SharedPtr latest_joy_msg;
++    atomic<bool> use_ros_joy{false};
++    atomic<bool> stop_ros_thread{false};
++    bool use_xbox_mapping{true};
++    atomic<bool> is_active_{true};
++
++    // --- Methods ---
+     bool initializeTracks(SimpleControllerIO* io);
+-    bool initializeTracks(SimpleControllerIO* io, vector<string>& names);
++    bool initializeTracks(SimpleControllerIO* io, const vector<string>& names);
+     bool initializeFlipperJoints(SimpleControllerIO* io);
+-    bool initializeJoints(SimpleControllerIO* io, vector<JointSpec>& specs);
+-    virtual bool control() override;
++    bool initializeJoints(SimpleControllerIO* io, const vector<JointSpec>& specs);
+     void controlTracks();
+     void setTrackTorque(int id, double dq_target, double kd);
+     void updateFlipperTargetPositions();
+     void controlJointsWithTorque();
+     void controlJointsWithVelocity();
+     void controlJointsWithPosition();
++    void initializeROS(bool prefer_ros_joy);
++    void joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg);
++    void rosSpinThread();
++    double getJoyAxis(int axis, double threshold = 0.0) const;
++    bool getJoyButton(int button) const;
+ };
+ 
++AizuSpiderController::~AizuSpiderController()
++{
++    stop_ros_thread = true;
++    if(executor){ try { executor->cancel(); } catch(...){} }
++    if(ros_thread.joinable()){ ros_thread.join(); }
++    // Clean up node and subscriptions after the spin thread has stopped.
++    joy_sub.reset();
++    controller_sub_.reset();
++    if(executor && node){
++        try { executor->remove_node(node); } catch(...) {}
++    }
++    executor.reset();
++    node.reset();
++    // NOTE: rclcpp::shutdown() is intentionally NOT called here.
++    // This controller shares the global RCL context with ROS2ControlItem,
++    // BodyROS2Item, and WorldROS2Item. Calling shutdown() here invalidates
++    // the context for all other nodes, causing the controller_manager
++    // destructor to crash with "rcl node's context is invalid".
++    // The OS reclaims all RCL resources when the process exits.
++}
+ 
+-bool AizuSpiderController::initialize(SimpleControllerIO* io)
++void AizuSpiderController::joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
+ {
+-    body = io->body();
+-    dt = io->timeStep();
++    lock_guard<mutex> lock(joy_mutex);
++    latest_joy_msg = msg;
++}
+ 
+-    mainActuationMode = Link::JointEffort;
+-    for(auto opt : io->options()){
+-        if(opt == "velocity"){
+-            mainActuationMode = Link::JointVelocity;
+-        } else if(opt == "position"){
+-            mainActuationMode = Link::JointDisplacement;
+-        }
+-    }
+-    io->os() << "The actuation mode of " << io->controllerName() << " is ";
+-    switch(mainActuationMode){
+-    case Link::JointEffort:       io->os() << "JointEffort";       break;
+-    case Link::JointDisplacement: io->os() << "JointDisplacement"; break;
+-    case Link::JointVelocity:     io->os() << "JointVelocity";     break;
++void AizuSpiderController::rosSpinThread()
++{
++    if(!executor || !node) return;
++    while(!stop_ros_thread){
++        executor->spin_some();
++        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+     }
+-    io->os() << "." << endl;
++}
+ 
+-    if(!initializeTracks(io)){
+-        return false;
+-    }
++double AizuSpiderController::getJoyAxis(int axis, double threshold) const
++{
++    if(!use_ros_joy || !latest_joy_msg) return 0.0;
++    lock_guard<mutex> lock(joy_mutex);
++    if(axis < 0 || axis >= static_cast<int>(latest_joy_msg->axes.size())) return 0.0;
++    double v = latest_joy_msg->axes[axis];
++    return (std::abs(v) < threshold) ? 0.0 : v;
++}
++
++bool AizuSpiderController::getJoyButton(int button) const
++{
++    if(!use_ros_joy || !latest_joy_msg) return false;
++    lock_guard<mutex> lock(joy_mutex);
++    if(button < 0 || button >= static_cast<int>(latest_joy_msg->buttons.size())) return false;
++    return latest_joy_msg->buttons[button] != 0;
++}
+ 
+-    if(!initializeFlipperJoints(io)){
+-        return false;
++void AizuSpiderController::initializeROS(bool prefer_ros_joy)
++{
++    use_ros_joy = false;
++    try {
++        if(!rclcpp::ok()) { rclcpp::init(0, nullptr); }
++        node = rclcpp::Node::make_shared("aizu_spider_controller");
++        joy_sub = node->create_subscription<sensor_msgs::msg::Joy>(
++            "/joy", 10,
++            std::bind(&AizuSpiderController::joyCallback, this, std::placeholders::_1)
++        );
++
++        controller_sub_ = node->create_subscription<std_msgs::msg::String>(
++            "/active_controller", 10,
++            [this](const std_msgs::msg::String::SharedPtr msg){
++                if(msg->data == "choreonoid"){
++                    if (!this->is_active_) RCLCPP_INFO(this->node->get_logger(), "==> Choreonoid Base/Flipper Control Activated <==");
++                    this->is_active_ = true;
++                } else {
++                    if (this->is_active_) RCLCPP_INFO(this->node->get_logger(), "==> Choreonoid Base/Flipper Control Deactivated <==");
++                    this->is_active_ = false;
++                }
++            }
++        );
++
++        executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
++        executor->add_node(node);
++        stop_ros_thread = false;
++        ros_thread = thread(&AizuSpiderController::rosSpinThread, this);
++        use_ros_joy = true;
++        use_xbox_mapping = true;
++    } catch(const std::exception& ex){
++        use_ros_joy = false; node.reset(); joy_sub.reset(); executor.reset();
+     }
++}
+ 
++bool AizuSpiderController::initialize(SimpleControllerIO* io)
++{
++    body = io->body();
++    dt = io->timeStep();
++    mainActuationMode = Link::JointTorque;
++    for(const auto& opt : io->options()){
++        if(opt == "velocity"){ mainActuationMode = Link::JointVelocity;
++        } else if(opt == "position"){ mainActuationMode = Link::JointDisplacement;
++        } else if(opt == "effort" || opt == "torque"){ mainActuationMode = Link::JointTorque;
++        } else if(opt == "ps4"){ use_xbox_mapping = false; }
++    }
++    io->os() << format("AizuSpiderController: actuation mode = {0}\n", mainActuationMode);
++    if(!initializeTracks(io)) return false;
++    if(!initializeFlipperJoints(io)) return false;
++    initializeROS(true);
+     joystick = io->getOrCreateSharedObject<SharedJoystick>("joystick");
+     targetMode = joystick->addMode();
+-
+     return true;
+ }
+ 
++bool AizuSpiderController::control()
++{
++    if(!is_active_){
++        return true;
++    }
++
++    if(joystick) joystick->updateState(targetMode);
++    controlTracks();
++    updateFlipperTargetPositions();
++    if(mainActuationMode == Link::JointTorque){ controlJointsWithTorque(); }
++    else if(mainActuationMode == Link::JointVelocity){ controlJointsWithVelocity(); }
++    else if(mainActuationMode == Link::JointDisplacement){ controlJointsWithPosition(); }
++    return true;
++}
+ 
+ bool AizuSpiderController::initializeTracks(SimpleControllerIO* io)
+ {
+-    tracks.clear();
+-    qprev_track.clear();
+-    
+-    vector<string> trackNames = {
+-        "L_TRACK", "R_TRACK", "FL_SUB_TRACK", "FR_SUB_TRACK", "BL_SUB_TRACK", "BR_SUB_TRACK" };
+-
+-    vector<string> wheelNames = {
+-        "L_TRACK_WHEEL1", "R_TRACK_WHEEL1",
+-        "FL_SUB_TRACK_WHEEL1", "FR_SUB_TRACK_WHEEL1", "BL_SUB_TRACK_WHEEL1", "BR_SUB_TRACK_WHEEL1" };
+-    
+-    bool result;
+-    
++    tracks.clear(); qprev_track.clear();
++    vector<string> wheelNames = {"L_TRACK_WHEEL1", "R_TRACK_WHEEL1", "FL_SUB_TRACK_WHEEL1", "FR_SUB_TRACK_WHEEL1", "BL_SUB_TRACK_WHEEL1", "BR_SUB_TRACK_WHEEL1"};
++    vector<string> trackNames = {"L_TRACK", "R_TRACK", "FL_SUB_TRACK", "FR_SUB_TRACK", "BL_SUB_TRACK", "BR_SUB_TRACK"};
+     if(body->link(wheelNames[0])){
+         if(mainActuationMode == Link::JointTorque){
+-            trackActuationMode = Link::JointTorque;
+-            trackVelocityRatio = 0.5;
+-            kd_mainTrack = 8.0;
+-            kd_subTrack = 1.5;
++            trackActuationMode = Link::JointTorque; trackVelocityRatio = 0.5; kd_mainTrack = 8.0; kd_subTrack = 1.5;
+         } else {
+-            trackActuationMode = Link::JointVelocity;
+-            trackVelocityRatio = 4.0;
++            trackActuationMode = Link::JointVelocity; trackVelocityRatio = 4.0;
+         }
+-        result = initializeTracks(io, wheelNames);
++        return initializeTracks(io, wheelNames);
+     } else {
+-        // Pseudo continuous tracks
+-        trackActuationMode = Link::JointVelocity;
+-        trackVelocityRatio = 0.5;
+-        result = initializeTracks(io, trackNames);
++        trackActuationMode = Link::JointVelocity; trackVelocityRatio = 0.5; return initializeTracks(io, trackNames);
+     }
+-
+-    return result;
+ }
+-
+-
+-bool AizuSpiderController::initializeTracks(SimpleControllerIO* io, vector<string>& names)
++bool AizuSpiderController::initializeTracks(SimpleControllerIO* io, const vector<string>& names)
+ {
+-    for(auto& name : names){
+-        auto link = body->link(name);
+-        if(!link){
+-            io->os() << format("{0} of {1} is not found", name, body->name()) << endl;
+-            return false;
+-        }
+-        link->setActuationMode(trackActuationMode);
+-        io->enableOutput(link);
+-        tracks.push_back(link);
+-        qprev_track.push_back(link->q());
++    for(const auto& name : names){
++        Link* link = body->link(name); if(!link){ io->os() << format("Track link '{0}' not found\n", name); return false; }
++        link->setActuationMode(trackActuationMode); io->enableOutput(link); tracks.push_back(link); qprev_track.push_back(link->q());
+     }
+     return true;
+ }
+-
+-
+ bool AizuSpiderController::initializeFlipperJoints(SimpleControllerIO* io)
+ {
+     jointInfos.clear();
+-    
+-    vector<JointSpec> specs(NUM_FLIPPERS);
+-
+-    const double FLIPPER_P_GAIN_TORQUE = 800.0;
+-    const double FLIPPER_D_GAIN_TORQUE = 20.0;
+-    const double FLIPPER_P_GAIN_VELOCITY = 0.5;
+-    
+-    specs[FR_FLIPPER] = { "FR_FLIPPER", FLIPPER_P_GAIN_TORQUE, FLIPPER_D_GAIN_TORQUE, FLIPPER_P_GAIN_VELOCITY };
+-    specs[FL_FLIPPER] = { "FL_FLIPPER", FLIPPER_P_GAIN_TORQUE, FLIPPER_D_GAIN_TORQUE, FLIPPER_P_GAIN_VELOCITY };
+-    specs[BR_FLIPPER] = { "BR_FLIPPER", FLIPPER_P_GAIN_TORQUE, FLIPPER_D_GAIN_TORQUE, FLIPPER_P_GAIN_VELOCITY };
+-    specs[BL_FLIPPER] = { "BL_FLIPPER", FLIPPER_P_GAIN_TORQUE, FLIPPER_D_GAIN_TORQUE, FLIPPER_P_GAIN_VELOCITY };
+-
++    const double FLIPPER_P_GAIN_TORQUE = 800.0, FLIPPER_D_GAIN_TORQUE = 20.0, FLIPPER_P_GAIN_VELOCITY = 0.5;
++    vector<JointSpec> specs = {
++        {"FR_FLIPPER", FLIPPER_P_GAIN_TORQUE, FLIPPER_D_GAIN_TORQUE, FLIPPER_P_GAIN_VELOCITY},
++        {"FL_FLIPPER", FLIPPER_P_GAIN_TORQUE, FLIPPER_D_GAIN_TORQUE, FLIPPER_P_GAIN_VELOCITY},
++        {"BR_FLIPPER", FLIPPER_P_GAIN_TORQUE, FLIPPER_D_GAIN_TORQUE, FLIPPER_P_GAIN_VELOCITY},
++        {"BL_FLIPPER", FLIPPER_P_GAIN_TORQUE, FLIPPER_D_GAIN_TORQUE, FLIPPER_P_GAIN_VELOCITY}
++    };
+     return initializeJoints(io, specs);
+ }
+-
+-
+-bool AizuSpiderController::initializeJoints(SimpleControllerIO* io, vector<JointSpec>& specs)
++bool AizuSpiderController::initializeJoints(SimpleControllerIO* io, const vector<JointSpec>& specs)
+ {
+-    for(auto& spec : specs){
+-        auto joint = body->link(spec.name);
+-        if(!joint){
+-            io->os() << format("{0} of {1} is not found", spec.name, body->name()) << endl;
+-            return false;
+-        }
+-        joint->setActuationMode(mainActuationMode);
+-        io->enableIO(joint);
+-
+-        JointInfo info;
+-        info.joint = joint;
+-        info.qref = info.qold = joint->q();
+-
+-        if(mainActuationMode == Link::JointVelocity){
+-            info.kp = spec.kp_velocity;
+-        } else if(mainActuationMode == Link::JointTorque){
+-            info.kp = spec.kp_torque;
+-            info.kd = spec.kd_torque;
+-        }
+-        
++    for(const auto& s : specs){
++        Link* joint = body->link(s.name); if(!joint){ io->os() << format("Joint '{0}' not found\n", s.name); return false; }
++        joint->setActuationMode(mainActuationMode); io->enableIO(joint); JointInfo info;
++        info.link = joint; info.qref = info.qold = joint->q();
++        if(mainActuationMode == Link::JointVelocity){ info.kp = s.kp_velocity; info.kd = 0.0; }
++        else if(mainActuationMode == Link::JointTorque){ info.kp = s.kp_torque; info.kd = s.kd_torque; }
++        else { info.kp = 1.0; info.kd = 0.0; }
+         jointInfos.push_back(info);
+     }
+-
+     return true;
+ }
+-
+-
+-bool AizuSpiderController::control()
+-{
+-    joystick->updateState(targetMode);
+-
+-    controlTracks();
+-
+-    updateFlipperTargetPositions();
+-
+-    switch(mainActuationMode){
+-    case Link::JointTorque:
+-        controlJointsWithTorque();
+-        break;
+-    case Link::JointVelocity:
+-        controlJointsWithVelocity();
+-        break;
+-    case Link::JointAngle:
+-        controlJointsWithPosition();
+-        break;
+-    default:
+-        break;
+-    }
+-
+-    return true;
+-}
+-
+-
+ void AizuSpiderController::controlTracks()
+ {
+-    double hpos =
+-        joystick->getPosition(targetMode, Joystick::L_STICK_H_AXIS, STICK_THRESH) +
+-        0.8 * joystick->getPosition(Joystick::DIRECTIONAL_PAD_H_AXIS);
++    double hpos = 0.0, vpos = 0.0;
++    if(use_ros_joy && latest_joy_msg){
++        hpos = getJoyAxis(0, STICK_THRESH) + 0.8 * getJoyAxis(6);
++        vpos = -getJoyAxis(1, STICK_THRESH) - 0.8 * getJoyAxis(7);
++        bool R1 = getJoyButton(5);
++        bool R2 = (getJoyAxis(5, STICK_THRESH) < -0.1) || getJoyButton(7);
++        if(R1){ vpos = 0.0; hpos = getJoyAxis(3, STICK_THRESH); }
++        if(R2){ double boost = 1.5; hpos *= boost; vpos *= boost; }
++    } else if(joystick){
++        hpos = joystick->getPosition(targetMode, Joystick::L_STICK_H_AXIS, STICK_THRESH) + 0.8 * joystick->getPosition(Joystick::DIRECTIONAL_PAD_H_AXIS);
++        vpos = - (joystick->getPosition(targetMode, Joystick::L_STICK_V_AXIS, STICK_THRESH) + 0.8 * joystick->getPosition(Joystick::DIRECTIONAL_PAD_V_AXIS));
++        bool R_button = joystick->getButtonState(targetMode, Joystick::R_BUTTON);
++        bool R_trigger = joystick->getPosition(targetMode, Joystick::R_TRIGGER_AXIS, STICK_THRESH) > 0.0;
++        if(R_button){ vpos = 0.0; hpos = joystick->getPosition(targetMode, Joystick::R_STICK_H_AXIS, STICK_THRESH); }
++        if(R_trigger){ double boost = 1.5; hpos *= boost; vpos *= boost; }
++    }
++    vpos = -vpos;
+ 
+-    double vpos = -(
+-        joystick->getPosition(targetMode, Joystick::L_STICK_V_AXIS, STICK_THRESH) +
+-        0.8 * joystick->getPosition(Joystick::DIRECTIONAL_PAD_V_AXIS));
+-    
+     double dq_L = trackVelocityRatio * (vpos + 0.4 * hpos);
+     double dq_R = trackVelocityRatio * (vpos - 0.4 * hpos);
+-
+-    switch(trackActuationMode){
+-
+-    case Link::JointVelocity:
+-        for(int i=0; i < 3; ++i){
+-            tracks[i*2  ]->dq_target() = dq_L;
+-            tracks[i*2+1]->dq_target() = dq_R;
+-        }
+-        break;
+-
+-    case Link::JointTorque:
+-        setTrackTorque(L_TRACK, dq_L, kd_mainTrack);
+-        setTrackTorque(R_TRACK, dq_R, kd_mainTrack);
+-        setTrackTorque(FL_SUB_TRACK, dq_L, kd_subTrack);
+-        setTrackTorque(FR_SUB_TRACK, dq_R, kd_subTrack);
+-        setTrackTorque(BL_SUB_TRACK, dq_L, kd_subTrack);
+-        setTrackTorque(BR_SUB_TRACK, dq_R, kd_subTrack);
+-        break;
+-
+-    default:
+-        break;
++    if(trackActuationMode == Link::JointVelocity){
++        for(size_t i=0; i<tracks.size(); i+=2){ tracks[i]->dq_target() = dq_L; if(i+1 < tracks.size()) tracks[i+1]->dq_target() = dq_R; }
++    } else if(trackActuationMode == Link::JointTorque){
++        setTrackTorque(L_TRACK, dq_L, kd_mainTrack); setTrackTorque(R_TRACK, dq_R, kd_mainTrack);
++        setTrackTorque(FL_SUB_TRACK, dq_L, kd_subTrack); setTrackTorque(FR_SUB_TRACK, dq_R, kd_subTrack);
++        setTrackTorque(BL_SUB_TRACK, dq_L, kd_subTrack); setTrackTorque(BR_SUB_TRACK, dq_R, kd_subTrack);
+     }
+ }
+-
+-
+ void AizuSpiderController::setTrackTorque(int id, double dq_target, double kd)
+ {
+-    Link* axis = tracks[id];
+-    double dq_current = (axis->q() - qprev_track[id]) / dt;
+-    axis->u() = kd * (dq_target - dq_current);
+-    qprev_track[id] = axis->q();
++    if(id < 0 || id >= static_cast<int>(tracks.size())) return;
++    Link* axis = tracks[id]; double dq_current = (axis->q() - qprev_track[id]) / dt;
++    axis->u() = kd * (dq_target - dq_current); qprev_track[id] = axis->q();
+ }
+-
+-
+ void AizuSpiderController::updateFlipperTargetPositions()
+ {
+     static const double FLIPPER_GAIN = 0.5;
++    double collective_pos = 0.0;
++    bool equalize_button = false;
++    bool front_left_btn = false, front_right_btn = false, back_left_btn = false, back_right_btn = false;
++
++    if(use_ros_joy && latest_joy_msg){
++        equalize_button = getJoyButton(10);
++        collective_pos = getJoyAxis(4, STICK_THRESH);
++        front_left_btn  = getJoyButton(2);
++        front_right_btn = getJoyButton(1);
++        back_left_btn   = getJoyButton(0);
++        back_right_btn  = getJoyButton(3);
++    } else if(joystick){
++        equalize_button = joystick->getButtonState(targetMode, Joystick::R_STICK_BUTTON);
++        collective_pos = joystick->getPosition(targetMode, Joystick::R_STICK_V_AXIS, STICK_THRESH);
++        front_left_btn  = joystick->getButtonState(targetMode, Joystick::X_BUTTON);
++        front_right_btn = joystick->getButtonState(targetMode, Joystick::B_BUTTON);
++        back_left_btn   = joystick->getButtonState(targetMode, Joystick::A_BUTTON);
++        back_right_btn  = joystick->getButtonState(targetMode, Joystick::Y_BUTTON);
++    }
+ 
+-    // Arrange all the flippers to the same position
+-    if(joystick->getButtonState(targetMode, Joystick::R_STICK_BUTTON)){
++    collective_pos = -collective_pos;
++
++    if(equalize_button){
+         double qa = 0.0;
+-        for(int i=0; i < NUM_FLIPPERS; ++i){
+-            qa += jointInfos[i].qref;
+-        }
+-        qa /= static_cast<double>(NUM_FLIPPERS);
++        for(const auto& j : jointInfos) qa += j.qref;
++        qa /= static_cast<double>(jointInfos.size());
+         double dqmax = dt * 0.5;
+-        for(int i=0; i < NUM_FLIPPERS; ++i){
+-            double dq = qa - jointInfos[i].qref;
+-            if(dq > dqmax){
+-                dq = dqmax;
+-            } else if(dq < -dqmax){
+-                dq = -dqmax;
+-            }
+-            jointInfos[i].qref += dq;
+-        }
+-    } else {
+-        double pos = joystick->getPosition(targetMode, Joystick::R_STICK_V_AXIS, STICK_THRESH);
+-        double dq = dt * FLIPPER_GAIN * pos;
+-        bool FL = joystick->getPosition(targetMode, Joystick::L_TRIGGER_AXIS, STICK_THRESH) > 0.0;
+-        bool FR = joystick->getPosition(targetMode, Joystick::R_TRIGGER_AXIS, STICK_THRESH) > 0.0;
+-        bool BL = joystick->getButtonState(targetMode, Joystick::L_BUTTON);
+-        bool BR = joystick->getButtonState(targetMode, Joystick::R_BUTTON);
+-        
+-        if(!FL && !FR && !BL && !BR){
+-            // Synchronize mode
+-            jointInfos[FR_FLIPPER].qref += dq;
+-            jointInfos[FL_FLIPPER].qref += dq;
+-            jointInfos[BR_FLIPPER].qref += dq;
+-            jointInfos[BL_FLIPPER].qref += dq;
+-        } else {
+-            if(FL){
+-                jointInfos[FL_FLIPPER].qref += dq;
+-            }
+-            if(FR){
+-                jointInfos[FR_FLIPPER].qref += dq;
+-            }
+-            if(BL){
+-                jointInfos[BL_FLIPPER].qref += dq;
+-            }
+-            if(BR){
+-                jointInfos[BR_FLIPPER].qref += dq;
+-            }
++        for(auto& j : jointInfos){
++            double dq = qa - j.qref;
++            dq = std::clamp(dq, -dqmax, dqmax);
++            j.qref += dq;
+         }
++        return;
+     }
+-}
+ 
++    double dq = dt * FLIPPER_GAIN * collective_pos;
++    bool individual_control = front_left_btn || front_right_btn || back_left_btn || back_right_btn;
+ 
++    if(!individual_control){
++        for(auto& j : jointInfos) j.qref += dq;
++    } else {
++        if(front_right_btn && jointInfos.size() > 0) jointInfos[0].qref += dq;
++        if(front_left_btn  && jointInfos.size() > 1) jointInfos[1].qref += dq;
++        if(back_right_btn  && jointInfos.size() > 2) jointInfos[2].qref += dq;
++        if(back_left_btn   && jointInfos.size() > 3) jointInfos[3].qref += dq;
++    }
++}
+ void AizuSpiderController::controlJointsWithTorque()
+ {
+-    for(auto& info : jointInfos){
+-        auto joint = info.joint;
+-        double q = joint->q();
+-        double dq = (q - info.qold) / dt;
+-        joint->u() = info.kp * (info.qref - q) + info.kd * (0.0 - dq);
+-        info.qold = q;
+-    }
++    for(auto& info : jointInfos){ Link* joint = info.link; double q = joint->q(); double dq = (q - info.qold) / dt;
++        joint->u() = info.kp * (info.qref - q) + info.kd * (0.0 - dq); info.qold = q; }
+ }
+-
+-
+ void AizuSpiderController::controlJointsWithVelocity()
+ {
+-    for(auto& info : jointInfos){
+-        auto joint = info.joint;
+-        joint->dq_target() = info.kp * (info.qref - joint->q()) / dt;
+-    }
++    for(auto& info : jointInfos){ Link* joint = info.link; joint->dq_target() = info.kp * (info.qref - joint->q()) / dt; }
+ }
+-
+-
+ void AizuSpiderController::controlJointsWithPosition()
+ {
+-    for(auto& info : jointInfos){
+-        info.joint->q_target() = info.qref;
+-    }
++    for(auto& info : jointInfos){ info.link->q_target() = info.qref; }
+ }
+-
+-
+ CNOID_IMPLEMENT_SIMPLE_CONTROLLER_FACTORY(AizuSpiderController)
+diff --git a/sample/SimpleController/CMakeLists.txt b/sample/SimpleController/CMakeLists.txt
+index a2b8a0143d3c2f9efc242ccf813aa3c359faa146..62242449eb76dc1e2e94969d154373598f2c4976 100644
+--- a/sample/SimpleController/CMakeLists.txt
++++ b/sample/SimpleController/CMakeLists.txt
+@@ -82,3 +82,18 @@ choreonoid_add_simple_controller(PendulumSampleController PendulumSampleControll
+ list(APPEND project_files PendulumSample.cnoid)
+ 
+ install_project_files(${project_files})
++
++# --- ROS 2 support for AizuSpiderController ---
++find_package(ament_cmake REQUIRED)
++find_package(rclcpp REQUIRED)
++find_package(sensor_msgs REQUIRED)
++
++set_target_properties(AizuSpiderController PROPERTIES
++  CXX_STANDARD 17
++  CXX_STANDARD_REQUIRED YES
++)
++
++ament_target_dependencies(AizuSpiderController
++  rclcpp
++  sensor_msgs
++)
+diff --git a/sample/SimpleController/Jaco2Controller.cpp b/sample/SimpleController/Jaco2Controller.cpp
+index c0615dd548fbf40e85665ec20e1e7f95c8473f3f..774a659bd533ed2e36481c2e6ac8b8ea79a7ee57 100644
+--- a/sample/SimpleController/Jaco2Controller.cpp
++++ b/sample/SimpleController/Jaco2Controller.cpp
+@@ -24,6 +24,7 @@ class Jaco2Controller : public SimpleController
+     vector<JointInfo> jointInfos;
+ 
+     double fingerJointTargetAngle;
++    bool fingerStateInitialized;
+ 
+     struct JointSpec {
+         string name;
+@@ -42,14 +43,20 @@ class Jaco2Controller : public SimpleController
+         FINGER1,
+         FINGER2,
+         FINGER3,
+-        //FINGER1_TIP,
+-        //FINGER2_TIP,
+-        //FINGER3_TIP,
+         NUM_JOINTS
+     };
+ 
+     SharedJoystickPtr joystick;
+     int targetMode;
++    struct ButtonState {
++        bool current;
++        bool previous;
++        bool isPressed() const { return current && !previous; }
++        bool isHeld() const { return current; }
++        void update(bool newState) { previous = current; current = newState; }
++    };
++    
++    ButtonState selectButton, startButton;
+ 
+ public:
+     virtual bool initialize(SimpleControllerIO* io) override;
+@@ -75,6 +82,10 @@ bool Jaco2Controller::initialize(SimpleControllerIO* io)
+     mainActuationMode = Link::JointTorque;
+     string prefix;
+     
++    selectButton = {false, false};
++    startButton = {false, false};
++    fingerStateInitialized = false;
++    
+     for(auto& option : io->options()){
+         if(option == "velocity"){
+             mainActuationMode = Link::JointVelocity;
+@@ -108,9 +119,6 @@ bool Jaco2Controller::initialize(SimpleControllerIO* io)
+         specs[FINGER1     ] = { "FINGER1",     30,     3,  P_GAIN_VELOCITY };
+         specs[FINGER2     ] = { "FINGER2",     30,     3,  P_GAIN_VELOCITY };
+         specs[FINGER3     ] = { "FINGER3",     30,     3,  P_GAIN_VELOCITY };
+-        //specs[FINGER1_TIP ] = { "FINGER1_TIP", 20,     2,  P_GAIN_VELOCITY };
+-        //specs[FINGER2_TIP ] = { "FINGER2_TIP", 20,     2,  P_GAIN_VELOCITY };
+-        //specs[FINGER3_TIP ] = { "FINGER3_TIP", 20,     2,  P_GAIN_VELOCITY };
+     } else {
+         //                                     P      D      P (vel)
+         specs[SHOULDER    ] = { "SHOULDER",   400.0, 30.0,  P_GAIN_VELOCITY };
+@@ -122,9 +130,6 @@ bool Jaco2Controller::initialize(SimpleControllerIO* io)
+         specs[FINGER1     ] = { "FINGER1",      5.0,  0.5,  P_GAIN_VELOCITY };
+         specs[FINGER2     ] = { "FINGER2",      5.0,  0.5,  P_GAIN_VELOCITY };
+         specs[FINGER3     ] = { "FINGER3",      5.0,  0.5,  P_GAIN_VELOCITY };
+-        //specs[FINGER1_TIP ] = { "FINGER1_TIP", 3.0,  0.3,  P_GAIN_VELOCITY };
+-        //specs[FINGER2_TIP ] = { "FINGER2_TIP", 3.0,  0.3,  P_GAIN_VELOCITY };
+-        //specs[FINGER3_TIP ] = { "FINGER3_TIP", 3.0,  0.3,  P_GAIN_VELOCITY };
+     }
+     
+     if(!initializeJoints(io, specs, prefix)){
+@@ -134,6 +139,17 @@ bool Jaco2Controller::initialize(SimpleControllerIO* io)
+     joystick = io->getOrCreateSharedObject<SharedJoystick>("joystick");
+     targetMode = joystick->addMode();
+ 
++    io->os() << "=== JACO2 CONTROLLER - ZEBION GAMEPAD VERSION ===" << endl;
++    io->os() << "Left Stick: ARM rotation (horizontal) & HAND positioning (vertical)" << endl;
++    io->os() << "Right Stick: Forearm & Wrist1 joints" << endl;
++    io->os() << "L1/R1 buttons: SHOULDER joint (L1=left, R1=right)" << endl;
++    io->os() << "B/X buttons: Wrist2 joint" << endl;
++    io->os() << "A button: Close fingers" << endl;
++    io->os() << "Y button: Open fingers" << endl;
++    io->os() << "SELECT: Slow mode toggle" << endl;
++    io->os() << "START: Reset finger position" << endl;
++    io->os() << "=================================================" << endl;
++
+     return true;
+ }
+ 
+@@ -164,7 +180,11 @@ bool Jaco2Controller::initializeJoints(SimpleControllerIO* io, vector<JointSpec>
+         jointInfos.push_back(info);
+     }
+ 
+-    fingerJointTargetAngle = jointInfos[FINGER1].joint->q();
++    // Only initialize finger target angle once on first call, not on every arm switch
++    if(!fingerStateInitialized){
++        fingerJointTargetAngle = jointInfos[FINGER1].joint->q();
++        fingerStateInitialized = true;
++    }
+ 
+     return true;
+ }
+@@ -174,8 +194,13 @@ bool Jaco2Controller::control()
+ {
+     joystick->updateState(targetMode);
+ 
++    // Update button states
++    selectButton.update(joystick->getButtonState(targetMode, Joystick::SELECT_BUTTON));
++    startButton.update(joystick->getButtonState(targetMode, Joystick::START_BUTTON));
++
+     updateTargetJointAngles();
+ 
++
+     switch(mainActuationMode){
+     case Link::JointTorque:
+         controlJointsWithTorque();
+@@ -196,15 +221,42 @@ bool Jaco2Controller::control()
+ 
+ void Jaco2Controller::updateTargetJointAngles()
+ {
+-    static const double K = 0.8;
++    static double K = 0.8;
++    static bool slowMode = false;
++
++    // Toggle slow mode with SELECT button
++    if(selectButton.isPressed()) {
++        slowMode = !slowMode;
++        // Adjust speed based on mode
++        K = slowMode ? 0.3 : 0.8;
++    }
++
++    // Reset finger position with START button (reads current actual position)
++    if(startButton.isPressed()) {
++        fingerJointTargetAngle = jointInfos[FINGER1].joint->q();
++    }
+ 
+-    setTargetJointAngle(SHOULDER, Joystick::L_STICK_H_AXIS, -K);
+-    setTargetJointAngle(ARM,      Joystick::L_STICK_V_AXIS, -K);
+-    setTargetJointAngle(FOREARM,  Joystick::R_STICK_V_AXIS,  K);
+-    setTargetJointAngle(WRIST1,   Joystick::R_STICK_H_AXIS, -K);
++    // SHOULDER joint: Use numbered buttons with proper casting
++    if(joystick->getButtonState(targetMode, 4)){  // L1 button
++        jointInfos[SHOULDER].q_ref -= dt * K;
++    }
++    if(joystick->getButtonState(targetMode, 5)){  // R1 button
++        jointInfos[SHOULDER].q_ref += dt * K;
++    }
++    clampTargetJointAngle(SHOULDER);
++    
++    // ARM joint: Use left stick horizontal axis for rotation
++    setTargetJointAngle(ARM, Joystick::L_STICK_V_AXIS, K);
++    
++    // HAND joint: Use left stick vertical axis for simple finger positioning
++    setTargetJointAngle(HAND, Joystick::L_STICK_H_AXIS, K);
+     
++    // FOREARM and WRIST1: Use right stick
++    setTargetJointAngle(FOREARM, Joystick::R_STICK_H_AXIS, K);
++    setTargetJointAngle(WRIST1, Joystick::R_STICK_V_AXIS, -K);
++    
++    // WRIST2: Use face buttons B/X
+     setTargetJointAngle(WRIST2, Joystick::B_BUTTON, Joystick::X_BUTTON, K);
+-    setTargetJointAngle(HAND,   Joystick::R_BUTTON, Joystick::L_BUTTON, 1.2 * K);
+ 
+     setFingerTargetJointAngles();
+ }
+@@ -231,14 +283,19 @@ void Jaco2Controller::setTargetJointAngle(int jointID, Joystick::ButtonID button
+ 
+ void Jaco2Controller::setFingerTargetJointAngles()
+ {
+-    double lt = joystick->getPosition(targetMode, Joystick::L_TRIGGER_AXIS);
+-    if(lt > 0.1){
+-        fingerJointTargetAngle -= dt * 0.4 * lt;
++    // FIXED: Use digital buttons instead of analog triggers for Zebion controller
++    double fingerSpeed = 0.8;
++    
++    // A button: Close fingers (equivalent to left trigger)
++    if(joystick->getButtonState(targetMode, Joystick::A_BUTTON)){
++        fingerJointTargetAngle -= dt * fingerSpeed;
+     }
+-    double rt = joystick->getPosition(targetMode, Joystick::R_TRIGGER_AXIS);
+-    if(rt > 0.1){
+-        fingerJointTargetAngle += dt * 0.4 * rt;
++    
++    // Y button: Open fingers (equivalent to right trigger) 
++    if(joystick->getButtonState(targetMode, Joystick::Y_BUTTON)){
++        fingerJointTargetAngle += dt * fingerSpeed;
+     }
++
+     double q_max = -100.0;
+     double q_min = 100.0;
+ 
+@@ -304,4 +361,4 @@ void Jaco2Controller::controlJointsWithTorque()
+ }
+ 
+ 
+-CNOID_IMPLEMENT_SIMPLE_CONTROLLER_FACTORY(Jaco2Controller)
++CNOID_IMPLEMENT_SIMPLE_CONTROLLER_FACTORY(Jaco2Controller)
+\ No newline at end of file
+diff --git a/share/model/AizuSpider/resource/AizuSpiderCommon.yaml b/share/model/AizuSpider/resource/AizuSpiderCommon.yaml
+index 68c1d5ddfcb75c500b7d9d6dc87bddce5ccf3934..f2a5022ec8fa45e795985aa8e82c3c365f85e253 100644
+--- a/share/model/AizuSpider/resource/AizuSpiderCommon.yaml
++++ b/share/model/AizuSpider/resource/AizuSpiderCommon.yaml
+@@ -1,4 +1,3 @@
+-
+ RED: &RED
+   material:
+     diffuseColor: [ 0.75, 0, 0 ]
+@@ -85,11 +84,11 @@ LIDAR_VLP16: &LIDAR_VLP16
+ 
+ CAMERA_MCM-4350FISH: &CAMERA_MCM-4350FISH
+   type: Camera
+-  format: COLOR
++  format: COLOR_DEPTH
+   fieldOfView: 90
+-  width: 1280
+-  height: 720
+-  frameRate: 30
++  width: 320
++  height: 240
++  frameRate: 10
+   elements:
+     RigidBody:
+       centerOfMass: [ -0.00003, 0.00640, 0.00007 ]
+@@ -198,6 +197,12 @@ HORIZONTAL_ARM_FRAME: &HORIZONTAL_ARM_FRAME
+       translation: [ -0.05080, 0, 0.085 ]
+       geometry: { type: Box, size: [ 0.200, 0.040, 0.040 ] }
+       appearance: *DARK_GRAY
++    - # Arm-mounted light
++      <<: *LIGHT
++      name: ARM_LIGHT
++      id: 0
++      translation: [ 0.12580, 0, 0.41050 ]
++      rotation: [ [ 0, 0, 1, -90 ], [ 1, 0, 0, 90 ] ]
+ 
+ # Chassis
+ CHASSIS: &CHASSIS
+@@ -219,11 +224,12 @@ CHASSIS: &CHASSIS
+         id: 0
+       - # Range sensor
+         <<: *LRF_UTM-30LX
+-        #<<: *LIDAR_VLP16
++        <<: *LIDAR_VLP16
+         name: LRF
+         id: 0
+         translation: [ 0.23415, 0, 0.19750 ]
+         rotation: [ [ 0, 0, 1, -90 ], [ 1, 0, 0, 90 ] ]
++        on: true
+       - # B0010_3101<1>
+         <<: *CAMERA_MCM-4350FISH
+         name: FRONT_CAMERA
+@@ -248,12 +254,6 @@ CHASSIS: &CHASSIS
+         translation: [ -0.35670, 0, 0.094 ]
+         rotation: [ [ 0, 0, 1, 90 ], [ 1, 0, 0, 90 ] ]
+         on: false
+-      - # Front light
+-        <<: *LIGHT
+-        name: FRONT_LIGHT
+-        id: 0
+-        translation: [ 0.12580, 0, 0.41050 ]
+-        rotation: [ [ 0, 0, 1, -90 ], [ 1, 0, 0, 90 ] ]
+       - # vertical arm attachment
+         <<: *VERTICAL_ARM_FRAME
+         translation: [ -0.060, 0.094, 0.43050 ]
+@@ -823,4 +823,4 @@ SUB_BELT: &SUB_BELT
+             translation: [ 0.15058, 0, -0.02009 ]
+             rotation: [ 0, 1, 0, -7.86 ]
+             geometry: { type: Box, size: [ 0.29253, 0.03810, 0.09226 ] }
+-            appearance: *DARK_GRAY
++            appearance: *DARK_GRAY
+\ No newline at end of file

@@ -1,0 +1,419 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c90951652512ced714c8d36804923a8e935c1d1f..42ab3359c35aed4238d6ec07c3fd8ff5462fd75e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -26,4 +26,4 @@ install(DIRECTORY
+   DESTINATION ${CHOREONOID_SHARE_SUBDIR}/WRS2025)
+ 
+ add_subdirectory(controller)
+-add_subdirectory(src)
++add_subdirectory(src)
+\ No newline at end of file
+diff --git a/controller/CMakeLists.txt b/controller/CMakeLists.txt
+index f71b6d457bd2c1407dce4289684ee853d1bf6d33..29da17367fdde57765f18d98c1497fb5a02662de 100644
+--- a/controller/CMakeLists.txt
++++ b/controller/CMakeLists.txt
+@@ -1,7 +1,62 @@
+-choreonoid_add_simple_controller(MonoCrawlerJoystickController MonoCrawlerJoystickController.cpp)
++# Find the required build system and ROS2 packages
++find_package(ament_cmake REQUIRED)
++find_package(rclcpp REQUIRED)
++find_package(sensor_msgs REQUIRED)
++find_package(std_msgs REQUIRED)
++
++# --- Your Controllers ---
++
++# WRS_AizuController with ROS2 support
++# NOTE: Target renamed to AizuController to avoid conflicts
++choreonoid_add_simple_controller(AizuController AizuSpiderController.cpp)
++set_target_properties(AizuController PROPERTIES
++  CXX_STANDARD 17
++  CXX_STANDARD_REQUIRED YES
++)
++ament_target_dependencies(AizuController
++  rclcpp
++  sensor_msgs
++  std_msgs
++)
++
++# WRS_HobbyDroneController with ROS2 support
++# NOTE: Target renamed to HobbyDroneController to avoid conflicts
++
++choreonoid_add_simple_controller(HobbyDroneController HobbyDroneJoystickController.cpp)
++set_target_properties(HobbyDroneController PROPERTIES
++  CXX_STANDARD 17
++  CXX_STANDARD_REQUIRED YES
++)
++# CRITICAL: Define ROS2_ENABLED to compile with ROS2 support
++target_compile_definitions(HobbyDroneController PRIVATE ROS2_ENABLED)
++# FIX: Add CnoidCFDPlugin for Rotor class support
++target_link_libraries(HobbyDroneController CnoidCFDPlugin)
++ament_target_dependencies(HobbyDroneController
++  rclcpp
++  sensor_msgs
++)
++
++# WRS_HobbyDroneController1 with ROS2 support (ROS2 Only - no fallback)
++choreonoid_add_simple_controller(HobbyDroneController1 HobbyDroneJoystickController1.cpp)
++set_target_properties(HobbyDroneController1 PROPERTIES
++  CXX_STANDARD 17
++  CXX_STANDARD_REQUIRED YES
++)
++# Link CnoidCFDPlugin for Rotor class support
++target_link_libraries(HobbyDroneController1 CnoidCFDPlugin)
++# ROS2 dependencies
++ament_target_dependencies(HobbyDroneController1
++  rclcpp
++  sensor_msgs
++)
++
++# --- Other Controllers (No ROS2 dependencies) ---
++
++choreonoid_add_simple_controller(BreakerBoxController BreakerBoxController.cpp)
+ 
+ choreonoid_add_simple_controller(LeakedLineController LeakedLineController.cpp)
+ target_link_libraries(LeakedLineController CnoidSceneEffectsPlugin)
+ 
+-choreonoid_add_simple_controller(StorageController StorageController.cpp)
+-choreonoid_add_simple_controller(BreakerBoxController BreakerBoxController.cpp)
+\ No newline at end of file
++choreonoid_add_simple_controller(MonoCrawlerJoystickController MonoCrawlerJoystickController.cpp)
++
++choreonoid_add_simple_controller(StorageController StorageController.cpp)
+\ No newline at end of file
+diff --git a/model/model_ex1/HobbyDrone.body b/model/model_ex1/HobbyDrone.body
+deleted file mode 100644
+index 74ddbb2db03179216d95bc85af4ccc78aa5cd2f5..0000000000000000000000000000000000000000
+--- a/model/model_ex1/HobbyDrone.body
++++ /dev/null
+@@ -1,93 +0,0 @@
+-format: ChoreonoidBody
+-formatVersion: 1.0
+-angleUnit: degree
+-name: HobbyDrone
+-
+-links:
+-  -
+-    name: CHASSIS
+-    translation: [ 0, 0, 0.3 ]
+-    jointType: free
+-    centerOfMass: [ 0, 0, 0 ]
+-    mass: 1.0
+-    inertia: [ 0.00228333, 0, 0, 0, 0.00228333, 0, 0, 0, 0.00375 ]
+-    density: 500.0
+-    cda: 0.25
+-    cw: 0.2
+-    cv: 10.0
+-    elements:
+-      -
+-        type: Shape
+-        geometry: { type: Box, size: [ 0.15, 0.15, 0.07 ] }
+-        appearance: { material: { diffuseColor: [ 0.5, 0.5, 0.5 ] } }
+-      -
+-        type: Shape
+-        geometry: { type: Sphere, radius: 0.15 }
+-        appearance: { material: { diffuseColor: [ 1.0, 1.0, 1.0 ], transparency: 0.9 } }
+-      -
+-        type: Camera
+-        name: FrontCamera
+-        translation: [ 0.08, 0, 0 ]
+-        rotation: [ [ 1, 0, 0, 90 ], [ 0, 1, 0, -90 ] ]
+-        format: COLOR
+-        fieldOfView: 62
+-        nearClipDistance: 0.02
+-        width: 640
+-        height: 480
+-        frameRate: 30
+-        elements:
+-          -
+-            type: Shape
+-            rotation: [ 1, 0, 0, 90 ]
+-            geometry: { type: Cylinder, radius: 0.03, height: 0.02 }
+-            appearance: { material: { diffuseColor: [ 0.2, 0.2, 0.8 ], transparency: 0.5 } }
+-      -
+-        type: SpotLight
+-        name: Light
+-        translation: [ 0.08, 0, 0 ]
+-        direction: [ 1, 0, 0 ]
+-        beamWidth: 36
+-        cutOffAngle: 40
+-        cutOffExponent: 6
+-        attenuation: [ 1, 0, 0.01 ]
+-        elements:
+-          -
+-            type: Shape
+-            rotation: [ 0, 0, 1, 90 ]
+-            translation: [ -0.02, 0, 0 ]
+-            geometry: { type: Cone, height: 0.04, radius: 0.025 }
+-            appearance: { material: { diffuseColor: [ 1.0, 1.0, 0.4 ] } }
+-      - { type: RateGyroSensor, name: GyroSensor, maxAngularVelocity: 1000.0 }
+-      - { type: AccelerationSensor, name: AccSensor, maxAcceleration: [ 1000.0, 1000.0, 1000.0 ] }
+-  - &rotor_link
+-    name: ROTOR_RF
+-    parent: CHASSIS
+-    translation: [ 0.075, -0.075, 0.035 ]
+-    jointType: fixed
+-    centerOfMass: [ 0, 0, 0 ]
+-    mass: 0.1
+-    inertia: [ 2.83333e-05, 0, 0, 0, 2.83333e-05, 0, 0, 0, 4.16667e-05 ]
+-    elements:
+-      - &rotor_shape
+-        type: Shape
+-        geometry: { type: Box, size: [ 0.05, 0.05, 0.03 ] }
+-        appearance: &green { material: { diffuseColor: [ 0, 1, 0 ] } }
+-      - &rotor_device { type: Rotor, name: Rotor_RF, symbol: false }
+-  - <<: *rotor_link
+-    name: ROTOR_LF
+-    translation: [ 0.075, 0.075, 0.035 ]
+-    elements:
+-      - { <<: *rotor_shape, appearance: *green }
+-      - { <<: *rotor_device, name: Rotor_LF }
+-  - <<: *rotor_link
+-    name: ROTOR_LR
+-    translation: [ -0.075, 0.075, 0.035 ]
+-    elements:
+-      - { <<: *rotor_shape, appearance: &red { material: { diffuseColor: [ 1, 0, 0 ] } } }
+-      - { <<: *rotor_device, name: Rotor_LR }
+-  - <<: *rotor_link
+-    name: ROTOR_RR
+-    translation: [ -0.075, -0.075, 0.035 ]
+-    elements:
+-      - { <<: *rotor_shape, appearance: *red }
+-      - { <<: *rotor_device, name: Rotor_RR }
+\ No newline at end of file
+diff --git a/project/AizuSpiderDA-ROS2.cnoid b/project/AizuSpiderDA-ROS2.cnoid
+index 510829ed333c526a4bc1b4fc9bb0d6ab4ecfe2fd..9858224ba70489b43f04d5c45e85ea978953a406 100644
+--- a/project/AizuSpiderDA-ROS2.cnoid
++++ b/project/AizuSpiderDA-ROS2.cnoid
+@@ -52,31 +52,6 @@ items:
+             base_directory: "Controller directory"
+             reloading: true
+             export_symbols: false
+-          children:
+-            -
+-              id: 3
+-              name: "Arm1Controller"
+-              plugin: Body
+-              class: SimpleControllerItem
+-              data:
+-                isNoDelayMode: false
+-                controllerOptions: "ARM1_"
+-                controller: "Jaco2Controller"
+-                base_directory: "Controller directory"
+-                reloading: true
+-                export_symbols: false
+-            -
+-              id: 4
+-              name: "Arm2Controller"
+-              plugin: Body
+-              class: SimpleControllerItem
+-              data:
+-                isNoDelayMode: false
+-                controllerOptions: "ARM2_"
+-                controller: "Jaco2Controller"
+-                base_directory: "Controller directory"
+-                reloading: true
+-                export_symbols: false
+         -
+           id: 5
+           name: "BodyROS2"
+@@ -85,6 +60,11 @@ items:
+           data:
+             body_ros_version: 0
+             joint_state_update_rate: 100
++        - 
++          id: 3
++          name: "ROS2Control"
++          plugin: ROS2
++          class: ROS2ControlItem
+ views:
+   -
+     id: 0
+@@ -333,4 +313,4 @@ layoutOfToolBars:
+       - { name: "SceneBar", x: 0, priority: 2 }
+       - { name: "GraphBar", x: 0, priority: 3 }
+       - { name: "CaptureBar", x: 0, priority: 4 }
+-      - { name: "DisplayValueFormatBar", x: 0, priority: 5 }
++      - { name: "DisplayValueFormatBar", x: 0, priority: 5 }
+\ No newline at end of file
+diff --git a/project/HobbyDrone-ROS2.cnoid b/project/HobbyDrone-ROS2.cnoid
+index 8c2ff1511c48fffa9ef6f94f60f836384bb0cd3e..6e920470f0d1dad6f7470d52060c6c23039bf0e1 100644
+--- a/project/HobbyDrone-ROS2.cnoid
++++ b/project/HobbyDrone-ROS2.cnoid
+@@ -12,7 +12,7 @@ items:
+       class: BodyItem
+       is_checked: true
+       data:
+-        file: "${SHARE}/WRS2025/model/model_ex1/HobbyDrone.body"
++        file: "${SHARE}/WRS2025/model/model_prasid/PrasidDrone.body"
+         format: CHOREONOID-BODY
+         rootPosition: [ 0, 0, 0.3 ]
+         rootAttitude: [
+@@ -29,6 +29,7 @@ items:
+         selfCollisionDetection: false
+         lock_location: false
+         scene_sensitive: true
++        reloading: true
+       children:
+         -
+           id: 2
+@@ -40,7 +41,7 @@ items:
+             controllerOptions: ""
+             controller: "HobbyDroneJoystickController"
+             base_directory: "Controller directory"
+-            reloading: false
++            reloading: true
+             export_symbols: false
+         -
+           id: 3
+diff --git a/project/M3/M3.cnoid b/project/M3/M3.cnoid
+index 187baeed185879cb843af03b4c8ffd78605d4688..f38878ee580d9cdf530ba9588d702e2b589f696c 100644
+--- a/project/M3/M3.cnoid
++++ b/project/M3/M3.cnoid
+@@ -779,118 +779,6 @@ items:
+             selfCollisionDetection: false
+             lock_location: false
+             scene_sensitive: true
+-    -
+-      id: 34
+-      name: "A2"
+-      plugin: Base
+-      class: FolderItem
+-      is_selected: true
+-      children:
+-        -
+-          id: 35
+-          name: "Fire"
+-          plugin: Body
+-          class: BodyItem
+-          is_selected: true
+-          is_checked: true
+-          data:
+-            file: "${SHARE}/WRS2018/model/Fire.body"
+-            format: CHOREONOID-BODY
+-            rootPosition: [ -5, 5, 0 ]
+-            rootAttitude: [
+-              1, 0, 0,
+-              0, 1, 0,
+-              0, 0, 1 ]
+-            jointDisplacements: [ 4.58366 ]
+-            initialRootPosition: [ -5, 5, 0 ]
+-            initialRootAttitude: [
+-              1, 0, 0,
+-              0, 1, 0,
+-              0, 0, 1 ]
+-            fix_root: true
+-            collisionDetection: true
+-            selfCollisionDetection: false
+-            lock_location: false
+-            scene_sensitive: true
+-          children:
+-            -
+-              id: 36
+-              name: "FireController"
+-              plugin: Body
+-              class: SimpleControllerItem
+-              is_selected: true
+-              data:
+-                isNoDelayMode: false
+-                controllerOptions: ""
+-                controller: "FireController"
+-                base_directory: "Controller directory"
+-                reloading: false
+-                export_symbols: false
+-        -
+-          id: 37
+-          name: "FireCabinet"
+-          plugin: Body
+-          class: BodyItem
+-          is_selected: true
+-          is_checked: true
+-          data:
+-            file: "${SHARE}/WRS2018/model/FullFeaturedFireCabinet.body"
+-            format: CHOREONOID-BODY
+-            rootPosition: [ -5, 10, 0 ]
+-            rootAttitude: [
+-              6.123234e-17, 1, -0,
+-              -1, 6.123234e-17, 0,
+-              0, 0, 1 ]
+-            jointDisplacements: [ 0, 0, 0, 0, 45, 0, 0, 0, 0 ]
+-            initialRootPosition: [ -5, 10, 0 ]
+-            initialRootAttitude: [
+-              2.22044605e-16, 1, -0,
+-              -1, 2.22044605e-16, 0,
+-              0, 0, 1 ]
+-            fix_root: true
+-            collisionDetection: true
+-            selfCollisionDetection: true
+-            lock_location: false
+-            scene_sensitive: true
+-          children:
+-            -
+-              id: 38
+-              name: "HoseNozzleController"
+-              plugin: Body
+-              class: SimpleControllerItem
+-              is_selected: true
+-              data:
+-                isNoDelayMode: false
+-                controllerOptions: ""
+-                controller: "HoseNozzleController"
+-                base_directory: "Controller directory"
+-                reloading: false
+-                export_symbols: false
+-        -
+-          id: 39
+-          name: "FireCircle"
+-          plugin: Body
+-          class: BodyItem
+-          is_selected: true
+-          is_checked: true
+-          data:
+-            file: "${SHARE}/WRS2018/model/T5_NoEntryAreaCircle.body"
+-            format: CHOREONOID-BODY
+-            rootPosition: [ -5, 5, 0 ]
+-            rootAttitude: [
+-              1, 0, 0,
+-              0, 1, 0,
+-              0, 0, 1 ]
+-            initialRootPosition: [ -5, 5, 0 ]
+-            initialRootAttitude: [
+-              1, 0, 0,
+-              0, 1, 0,
+-              0, 0, 1 ]
+-            fix_root: true
+-            collisionDetection: true
+-            selfCollisionDetection: false
+-            lock_location: false
+-            scene_sensitive: true
+     -
+       id: 40
+       name: "A3"
+diff --git a/registration/registration_m3.yaml b/registration/registration_m3.yaml
+index 792e8a31b1baf5bb98e1066fea0d99ff78844b68..83e0194e293758c201119af9dd90753720ff4995 100644
+--- a/registration/registration_m3.yaml
++++ b/registration/registration_m3.yaml
+@@ -1,16 +1,17 @@
+ format_version: 2.0
+-robot_list: &RobotList [ AizuSpiderDA-ROS2, HobbyDrone-ROS2 ]
+-
++robot_list: &RobotList [AizuSpiderDA-ROS2,HobbyDrone-ROS2]
+ registrations:
+   - &Mission3
+     name: M3
+-    task_project: [ M3/M3 ]
++    task_project: [ M2/A1,M2/A2,M2/A3,M2/A4,M2/Common] #M2/A1,M2/A2,M2/A3,M2/A4,M2/Common
+     robot_project: *RobotList
+     robot_alignment: X+
+-    start_position: [ -3.5, 0.0, 0.0 ]
++    start_position: [ -5.0, 6.0, 0.0 ]
+     simulator_project: [ AGXSimulator, AISTSimulator ]
+     view_project: M3/RefereeView
+-    enable_recording: false
++    enable_recording: true
+     # enable_tracking: true
+     #enable_ros: false
+-    enable_ros: true
++    enable_ros2: true
++    enable_ros2control: true
++    enable_ros2_control : true

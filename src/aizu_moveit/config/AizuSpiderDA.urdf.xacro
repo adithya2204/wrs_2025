@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="AizuSpiderDA">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+
+    <!-- Import AizuSpiderDA urdf file -->
+    <xacro:include filename="$(find aizu_spider_description)/urdf/AizuSpider_moveit.urdf" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="AizuSpiderDA.ros2_control.xacro" />
+
+
+    <xacro:AizuSpiderDA_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+
+</robot>

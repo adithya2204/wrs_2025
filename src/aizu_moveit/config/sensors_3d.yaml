@@ -1,0 +1,13 @@
+sensors:
+  - default_sensor
+
+default_sensor:
+  sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+  point_cloud_topic: /AizuSpider/ARM1_CAMERA/point_cloud
+  max_range: 3.0
+  max_update_rate: 10.0
+  padding_offset: 0.02
+  padding_scale: 1.0
+  point_subsample: 2
+  filtered_cloud_topic: filtered_point_cloud
+  # octomap_resolution: 0.05  # Remove or comment this; now set top-level in launch file

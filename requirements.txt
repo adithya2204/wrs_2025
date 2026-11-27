@@ -1,0 +1,24 @@
+# Python packages for the perception node (cv_wrs) and the point-cloud scripts in
+# aizu_spider_description/scripts. Install them into the workspace's .venv:
+#   pip install -r requirements.txt
+# ROS 2 Python packages (rclpy, cv_bridge, tf2_ros, sensor_msgs_py, ...) come from
+# /opt/ros/humble, not from pip. Versions are the ones used for WRS 2025
+# (Ubuntu 22.04, Python 3.10, CUDA 12.1).
+
+# PyTorch built for CUDA 12.1
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+ultralytics==8.4.45
+
+# cv_bridge on Humble is built against NumPy 1.x
+numpy==1.26.4
+# 4.11 is the newest OpenCV wheel that still allows NumPy 1.x
+# (the original environment had 4.13.0.92, which officially needs NumPy 2)
+opencv-python==4.11.0.86
+pillow==12.1.1
+scipy==1.15.3
+psutil==7.2.2
+
+# Point-cloud scripts only; not in the original environment's package list
+open3d==0.19.0

@@ -1,0 +1,15 @@
+format_version: 2.0
+robot_list: &RobotList [project_prasid/PrasidDrone1,project_prasid/PrasidDrone,project_prasid/Aizu_modified]
+registrations:
+  - &Mission3
+    name: M3
+    task_project: [ M3/M3] #M2/A1,M2/A2,M2/A3,M2/A4,M2/Common
+    robot_project: *RobotList
+    robot_alignment: X+
+    start_position: [ -5.0, 6.0, 0.0 ]
+    simulator_project: [ AGXSimulator, AISTSimulator ]
+    view_project: M3/RefereeView
+    enable_recording: true
+    # enable_tracking: true
+    enable_ros: true
+    enable_ros2: true

@@ -1,0 +1,368 @@
+diff --git a/src/node/choreonoid_ros2.cpp b/src/node/choreonoid_ros2.cpp
+index 1a043b39d39b7f11778bce4cf79bc729e70b7646..69bdebed892c93ed3a949e36b97ab2c7261ac276 100644
+--- a/src/node/choreonoid_ros2.cpp
++++ b/src/node/choreonoid_ros2.cpp
+@@ -1,10 +1,8 @@
+ #include <ament_index_cpp/get_package_prefix.hpp>
+ #include <rclcpp/utilities.hpp>
+-
+ #include <cnoid/App>
+ #include <cnoid/PluginManager>
+ #include <cnoid/UTF8>
+-
+ #include <string>
+ #include <vector>
+ #include <iostream>
+@@ -25,11 +23,8 @@ int main(int argc, char** argv)
+         // which causes [Warning:  Input file "" was not processed.] on Choreonoid
+         --nonRosArgc;
+     }
+-
+     cnoid::App app(nonRosArgc, nonRosArgv, "Choreonoid-ROS2", "Choreonoid");
+-
+     auto pluginManager = cnoid::PluginManager::instance();
+-
+     const char* prefixVar = getenv("AMENT_PREFIX_PATH");
+     if(prefixVar){
+         do {
+@@ -47,7 +42,6 @@ int main(int argc, char** argv)
+             return 1;
+         }
+     }
+-
+     if(!app.requirePluginToCustomizeApplication("ROS2")){
+         if(app.error() == cnoid::App::PluginNotFound){
+             auto message = app.errorMessage();
+@@ -62,12 +56,23 @@ int main(int argc, char** argv)
+         }
+         return 1;
+     }
+-    
+-    rclcpp::init(argc, argv);
+ 
++    rclcpp::init(argc, argv);
+     int ret = app.exec();
+ 
+-    rclcpp::shutdown();
++    // NOTE: rclcpp::shutdown() is intentionally NOT called here.
++    //
++    // app.exec() returns when the user closes Choreonoid or stops the simulation.
++    // At that point, ROS2 items (ROS2ControlItem, BodyROS2Item, WorldROS2Item) are
++    // still being destroyed as part of Choreonoid's cleanup sequence. Their
++    // destructors need a valid RCL context to cleanly destroy publishers, services,
++    // and nodes. Calling rclcpp::shutdown() here kills the context prematurely,
++    // causing the controller_manager destructor to throw:
++    //   "could not create publisher: rcl node's context is invalid"
++    // which triggers std::terminate and an ungraceful crash.
++    //
++    // The OS reclaims all resources when the process exits, so not calling
++    // rclcpp::shutdown() is safe here.
+ 
+     return ret;
+ }
+diff --git a/src/plugin/BodyROS2Item.cpp b/src/plugin/BodyROS2Item.cpp
+index 39e99ae566fbf843ae27c4a37b4d8d7015b8f903..679dfac43b7430161b9cbdfda6dedb7a05daff91 100644
+--- a/src/plugin/BodyROS2Item.cpp
++++ b/src/plugin/BodyROS2Item.cpp
+@@ -75,7 +75,7 @@ BodyROS2Item::BodyROS2Item(const BodyROS2Item &org)
+ 
+ BodyROS2Item::~BodyROS2Item()
+ {
+-    stop();
++    finalizeRosNode();
+ }
+ 
+ 
+@@ -149,14 +149,46 @@ void BodyROS2Item::initializeRosNode(BodyItem* bodyItem)
+ void BodyROS2Item::finalizeRosNode()
+ {
+     if(executor){
+-        executor->cancel();
+-        executorThread.join();
++        // Clear all sensor publisher/service vectors first so their shared_ptrs
++        // are released while the node and executor are still valid.
++        forceSensorPublishers.clear();
++        forceSensorSwitchServers.clear();
++        rateGyroSensorPublishers.clear();
++        rateGyroSensorSwitchServers.clear();
++        accelSensorPublishers.clear();
++        accelSensorSwitchServers.clear();
++        imuPublishers.clear();
++        imuSwitchServers.clear();
++        visionSensorPublishers.clear();
++        visionSensorSwitchServers.clear();
++        rangeVisionSensorPublishers.clear();
++        rangeVisionSensorSwitchServers.clear();
++        rangeSensorPublishers.clear();
++        rangeSensorSwitchServers.clear();
++        rangeSensorPcPublishers.clear();
++        rangeSensorPcSwitchServers.clear();
++        jointStatePublisher.reset();
++        imageTransport.reset();
++
++        // Remove node from executor while it is still spinning so that
++        // any in-flight callbacks complete cleanly.
+         executor->remove_node(rosNode);
++
++        // Reset the node while executor is still running so its destructor
++        // can dispatch any final callbacks (avoids "context is invalid" crash).
++        rosNode.reset();
++
++        // Now safe to stop the executor thread.
++        executor->cancel();
++        if(executorThread.joinable()){
++            executorThread.join();
++        }
+         executor.reset();
++    } else {
++        // executor was never started, just clear node if it exists
++        rosNode.reset();
+     }
+ 
+-    rosNode.reset();
+-
+     bodyItem = nullptr;
+ }
+ 
+@@ -189,6 +221,25 @@ double BodyROS2Item::timeStep() const
+ 
+ bool BodyROS2Item::start()
+ {
++    // Clear any publishers from a previous simulation run before recreating them.
++    forceSensorPublishers.clear();
++    forceSensorSwitchServers.clear();
++    rateGyroSensorPublishers.clear();
++    rateGyroSensorSwitchServers.clear();
++    accelSensorPublishers.clear();
++    accelSensorSwitchServers.clear();
++    imuPublishers.clear();
++    imuSwitchServers.clear();
++    visionSensorPublishers.clear();
++    visionSensorSwitchServers.clear();
++    rangeVisionSensorPublishers.clear();
++    rangeVisionSensorSwitchServers.clear();
++    rangeSensorPublishers.clear();
++    rangeSensorSwitchServers.clear();
++    rangeSensorPcPublishers.clear();
++    rangeSensorPcSwitchServers.clear();
++    imageTransport.reset();
++
+     imageTransport = std::make_shared<image_transport::ImageTransport>(rosNode);
+     // buffer of preserve currently state of joints.
+     jointState.header.stamp = getStampMsgFromSec(controlTime_);
+@@ -833,6 +884,7 @@ void BodyROS2Item::switchDevice(
+     Device* sensor)
+ {
+     sensor->on(request->data);
++    sensor->notifyStateChange();   // ← ADD THIS
+     response->success = (request->data == sensor->on());
+ }
+ 
+@@ -850,4 +902,4 @@ std::string BodyROS2Item::getROS2Name(const std::string &name) const {
+     std::string rosName = std::string(rosNode->get_fully_qualified_name()) + "/" + name;
+     std::replace(rosName.begin(), rosName.end(), '-', '_');
+     return rosName;
+-}
++}
+\ No newline at end of file
+diff --git a/src/plugin/ROS2ControlItem.cpp b/src/plugin/ROS2ControlItem.cpp
+index 6cd9fd58fa0a65d80fce9c3e0227d8b3c56c959f..36c008f88d0638fb2f6d41cdf24b43cebe86bc36 100644
+--- a/src/plugin/ROS2ControlItem.cpp
++++ b/src/plugin/ROS2ControlItem.cpp
+@@ -72,39 +72,53 @@ void ROS2ControlItem::onTargetBodyItemChanged(BodyItem* bodyItem)
+ {
+     bodyItem_ = bodyItem;
+     isConfiguread = false;
+-    
++
++    // Tear down any previous ROS state when the body item changes
++    finalize();
++
+     auto mout = MessageOut::master();
+-    
++
+     if(!bodyItem){
+         mout->putErrorln(
+             formatR(_("{0} must be a child item of a robot item to be configured."),
+                     displayName()));
+-        finalize();
+         return;
+     }
+-        
++
+     if (!rclcpp::ok()) {
+         mout->putErrorln(
+             formatR(_("{0} cannot be configured because Choreonoid is not executed with choreonoid_ros."),
+                     displayName()));
+         return;
+     }
+-    
++
++    if(!setupROS(mout)){
++        finalize();
++    }
++}
++
++
++bool ROS2ControlItem::setupROS(MessageOut* mout)
++{
+     executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+     executorThread = std::thread([this](){ executor->spin(); });
+-    
+-    const std::string nodeName = "choreonoid_ros2_control";
++
++    // Use a timestamp suffix to avoid ROS node name collision on replay
++    const std::string nodeName =
++        "choreonoid_ros2_control_" +
++        std::to_string(
++            std::chrono::steady_clock::now().time_since_epoch().count());
++
+     node_ = rclcpp::Node::make_shared(nodeName, nodeNamespace);
+     node_->set_parameter(rclcpp::Parameter("use_sim_time", true));
+     executor->add_node(node_);
+-    
++
+     auto resourceManager = createResourceManager();
+     if(!resourceManager){
+         mout->putErrorln(formatR(_("{0} cannot be configured."), displayName()));
+-        finalize();
+-        return;
++        return false;
+     }
+-            
++
+     auto options = controller_manager::get_cm_node_options();
+     options.parameter_overrides().emplace_back("use_sim_time", true);
+     controllerManager = std::make_shared<controller_manager::ControllerManager>(
+@@ -124,6 +138,7 @@ void ROS2ControlItem::onTargetBodyItemChanged(BodyItem* bodyItem)
+     executor->add_node(controllerManager);
+ 
+     isConfiguread = true;
++    return true;
+ }
+ 
+ 
+@@ -150,10 +165,10 @@ std::unique_ptr<hardware_interface::ResourceManager> ROS2ControlItem::createReso
+         return nullptr;
+     }
+     auto& hardwareInfo = hardwareInfos.front();
+-    
++
+     auto resourceManager = std::make_unique<hardware_interface::ResourceManager>();
+     resourceManager->load_urdf(urdfString, false, false);
+-    
++
+     auto bodySystem = std::make_unique<BodySystemInterface>(this);
+     resourceManager->import_component(std::move(bodySystem), hardwareInfo);
+ 
+@@ -171,7 +186,7 @@ std::unique_ptr<hardware_interface::ResourceManager> ROS2ControlItem::createReso
+ std::string ROS2ControlItem::getURDF() const
+ {
+     auto mout = MessageOut::master();
+-    
++
+     string robotStatePublisherName;
+     if (nodeNamespace.empty()) {
+         robotStatePublisherName = "robot_state_publisher";
+@@ -179,7 +194,7 @@ std::string ROS2ControlItem::getURDF() const
+         robotStatePublisherName = formatC("{0}/robot_state_publisher", nodeNamespace);
+     }
+     string parameterName = "robot_description";
+-    
++
+     using namespace std::chrono_literals;
+     auto client = std::make_shared<rclcpp::AsyncParametersClient>(
+         node_, robotStatePublisherName);
+@@ -224,7 +239,7 @@ bool ROS2ControlItem::initialize(ControllerIO* io)
+         io->mout()->putErrorln(formatR(_("{0} is not correctly configured."), displayName()));
+         return false;
+     }
+-    
++
+     io_ = io;
+     return true;
+ }
+@@ -241,7 +256,7 @@ rclcpp::Time ROS2ControlItem::getCurrentRosTime()
+ {
+     double time = io_->currentTime();
+ 
+-#ifndef ROS_DISTRO_HUMBLE    
++#ifndef ROS_DISTRO_HUMBLE
+     // Avoid zero time to prevent controller_manager error in Jazzy
+     // when clock check fails at the first control cycle
+     if (time < 1e-9) {
+@@ -283,6 +298,15 @@ void ROS2ControlItem::output()
+ 
+ void ROS2ControlItem::stop()
+ {
++    // Do NOT destroy the controller manager or executor here.
++    // The controller manager's destructor tries to publish on its node
++    // and will crash with "Node needs to be associated with an executor"
++    // if we tear down the executor underneath it.
++    //
++    // Instead, keep the ROS infrastructure alive across simulation runs.
++    // initialize() will reuse the existing controller manager on replay.
++    // finalize() (called from destructor / body item change) handles full teardown
++    // at process-exit time when a crash there is harmless.
+     io_ = nullptr;
+ }
+ 
+@@ -290,16 +314,26 @@ void ROS2ControlItem::stop()
+ void ROS2ControlItem::finalize()
+ {
+     if (executor) {
+-        executor->cancel();
+-        executorThread.join();
++        // Destroy the controller manager WHILE the executor is still spinning.
++        // The CM destructor publishes lifecycle state transitions; those publishers
++        // require a live executor. Cancelling the executor first causes the
++        // "Node needs to be associated with an executor" crash.
++        //
++        // Correct order:
++        //   1. reset(CM)   -- destructor runs, publishes, executor handles it
++        //   2. reset(node) -- auxiliary node destroyed
++        //   3. cancel()    -- now safe to stop the executor
++        //   4. join()      -- wait for spin thread to exit
+         if(controllerManager){
+-            executor->remove_node(controllerManager);
+             controllerManager.reset();
+         }
+         if(node_){
+-            executor->remove_node(node_);
+             node_.reset();
+         }
++        executor->cancel();
++        if (executorThread.joinable()) {
++            executorThread.join();
++        }
+         executor.reset();
+     }
+     isConfiguread = false;
+@@ -360,4 +394,4 @@ bool ResourceManagerEx::load_and_initialize_components(const std::string& urdf,
+     }
+     return components_are_loaded_and_initialized_;
+ }
+-#endif
++#endif
+\ No newline at end of file
+diff --git a/src/plugin/ROS2ControlItem.h b/src/plugin/ROS2ControlItem.h
+index 3594023cce2edbe5502ca87e3576f95c382fab5c..be7b399b002bb3647a67ed5d9bd1a33369b9544b 100644
+--- a/src/plugin/ROS2ControlItem.h
++++ b/src/plugin/ROS2ControlItem.h
+@@ -46,6 +46,9 @@ private:
+     ControllerIO* io_;
+     rclcpp::Duration cmPeriod;
+ 
++    // Sets up the ROS executor, node, and controller manager.
++    // Called both from onTargetBodyItemChanged and from initialize() on replay.
++    bool setupROS(MessageOut* mout);
+     std::unique_ptr<hardware_interface::ResourceManager> createResourceManager();
+     void finalize();
+     std::string getURDF() const;
+@@ -56,4 +59,4 @@ typedef ref_ptr<ROS2ControlItem> ROS2ControlItemPtr;
+ 
+ }  // namespace cnoid
+ 
+-#endif  // CNOID_ROS_PLUGIN_ROS2_CONTROL_ITEM_H
++#endif  // CNOID_ROS_PLUGIN_ROS2_CONTROL_ITEM_H
+\ No newline at end of file

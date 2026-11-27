@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="AizuSpiderDA">
+
+ 
+  <!-- Include the xacro files for the robot's components. -->
+<xacro:include filename="$(find aizu_spider_description)/urdf/materials.xacro"/>
+<xacro:include filename="$(find aizu_spider_description)/urdf/aizu_spider_base.urdf.xacro"/>
+<xacro:include filename="$(find aizu_spider_description)/urdf/jaco2_arm.xacro"/>
+
+  <!-- Create a world link to serve as the static frame. -->
+  <link name="CHASSIS"/>
+
+  <xacro:aizu_spider_base parent_link="CHASSIS" origin_xyz="0 0 0.03503" origin_rpy="0 0 0" />
+
+  <xacro:jaco2_arm prefix="ARM1_" parent_link="CHASSIS"
+    origin_xyz="-0.060 0.094 0.47130"
+    origin_rpy="0 0 1.5708" />
+
+  
+  <xacro:jaco2_arm prefix="ARM2_" parent_link="CHASSIS"
+    origin_xyz="-0.06320 -0.094 0.5150"
+    origin_rpy="1.5708 0 1.5708" />
+
+</robot>
