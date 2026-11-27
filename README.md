@@ -2,6 +2,8 @@
 
 Our ROS 2 Humble workspace for the [World Robot Summit 2025 Harsh Environment F-REI Challenge, Simulation Disaster Challenge](https://github.com/wrs-frei-simulation/WRS-2025). The challenge runs in the Choreonoid simulator: robots explore a damaged plant, read QR codes, operate valves and read analog gauges.
 
+Team PRASID (four members) finished **8th worldwide** at the WRS 2025 finals at the Fukushima Robot Test Field, Japan (10–12 October 2025), as the only team from India.
+
 We used an **AizuSpider** tracked robot with two **JACO2** arms and a **PrasidDrone**, our version of the challenge's HobbyDrone. On top of the official environment we added:
 
 - **Arm control:** MoveIt and `ros2_control` for both arms, plus gamepad teleoperation.
