@@ -1,6 +1,8 @@
-# WRS 2025 Simulation Disaster Challenge: team Prasid workspace
+# WRS 2025 Simulation Disaster Challenge: team PRASID workspace
 
 Our ROS 2 Humble workspace for the [World Robot Summit 2025 Harsh Environment F-REI Challenge, Simulation Disaster Challenge](https://github.com/wrs-frei-simulation/WRS-2025). The challenge runs in the Choreonoid simulator: robots explore a damaged plant, read QR codes, operate valves and read analog gauges.
+
+Team PRASID (four members) finished **8th worldwide** at the WRS 2025 finals at the Fukushima Robot Test Field, Japan (10–12 October 2025), as the only team from India.
 
 We used an **AizuSpider** tracked robot with two **JACO2** arms and a **PrasidDrone**, our version of the challenge's HobbyDrone. On top of the official environment we added:
 
@@ -22,7 +24,7 @@ This repository holds only our own work. `setup_workspace.sh` downloads the offi
 | `src/aizu_spider_description` | Robot description (AizuSpider + two JACO2 arms, HobbyDrone), `ros2_control` config, simulation and RViz launch files, point-cloud mapping scripts |
 | `src/aizu_moveit` | MoveIt configuration for both arms, gamepad teleoperation and controller switching |
 | `src/cv_wrs` | Perception node: QR codes, YOLOv8 valve detection, EfficientNet gauge regression (trained weights in `models/`) |
-| `overlay/` | New files for the official WRS-2025 package: team Prasid robot models, controllers, Choreonoid projects, registration file |
+| `overlay/` | New files for the official WRS-2025 package: team PRASID robot models, controllers, Choreonoid projects, registration file |
 | `patches/` | Our changes to existing files in Choreonoid, choreonoid_ros and WRS-2025 |
 | `setup_workspace.sh` | Downloads the official sources, applies `patches/`, copies `overlay/` into `src/` |
 | `setup_env.sh` | Activates the Python virtual environment, sources ROS 2 and the workspace |
@@ -199,7 +201,7 @@ python3 src/aizu_spider_description/scripts/multi_camera_pcd_accumulator.py  # a
 | `patches/choreonoid_ros.patch` | **Crash fixes.** `BodyROS2Item` releases its publishers and services and removes the node *before* stopping the executor. `ROS2ControlItem` tears down old ROS state and uses a unique node name, so a simulation can be restarted. `choreonoid_ros2` no longer calls `rclcpp::shutdown()` while ROS items are still being destroyed. The reasons are in the code comments. |
 | `patches/choreonoid.patch` | `AizuSpiderController` takes gamepad input over ROS 2 (`/joy`). `Jaco2Controller` gets button edge detection and an initialised finger state. The AizuSpider's four body cameras switch to colour plus depth at 320 × 240, 10 fps, and the model gets an arm light. |
 | `patches/WRS2025.patch` | Build rules for our ROS 2 controllers. `AizuSpiderDA-ROS2.cnoid`: the arms run through `ROS2ControlItem` instead of the joystick `Jaco2Controller`. `HobbyDrone-ROS2.cnoid` loads PrasidDrone. The M3 world drops the firefighting objects (area A2). `registration_m3.yaml` loads the M2 areas, with a new start position and recording on. |
-| `overlay/choreonoid/ext/WRS2025` | Team Prasid models (`model_prasid/`: AizuSpiderDA and NA, JACO2, PrasidDrone), controllers (`AizuSpiderController`, `HobbyDroneJoystickController`), projects (`project_prasid/`) and `registration_m3_team_prasid.yaml` |
+| `overlay/choreonoid/ext/WRS2025` | Team PRASID models (`model_prasid/`: AizuSpiderDA and NA, JACO2, PrasidDrone), controllers (`AizuSpiderController`, `HobbyDroneJoystickController`), projects (`project_prasid/`) and `registration_m3_team_prasid.yaml` |
 
 ### Changing the official code
 
